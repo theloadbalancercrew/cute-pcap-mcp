@@ -311,10 +311,10 @@ func TestValidateF5ContextRejectsBadInputs(t *testing.T) {
 	}
 }
 
-// TestAnalyzeArtifactDispatcherFindingsSurviveBuildFindings is the
-// always-running pin for the M4-round-2 fix. Even with no analyzers
-// available (capinfos / tshark / zeek all missing), analyzeArtifact
-// still runs to completion and should merge the dispatcher's
+// TestAnalyzeArtifactDispatcherFindingsSurviveBuildFindings is an
+// always-running pin. Even with no analyzers available (capinfos /
+// tshark / zeek all missing), analyzeArtifact still runs to completion
+// and should merge the dispatcher's
 // analysis_profile_unknown finding into out.Findings AFTER
 // buildFindings runs. The earlier code overwrote the slice, hiding
 // the dispatcher's signal from MCP callers.

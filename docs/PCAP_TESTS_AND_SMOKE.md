@@ -1,24 +1,21 @@
 # Tests And Smoke
 
-This document is the truth table for the tests and CI smoke checks
-shipped with `cute-pcap-mcp`. Every test row says
-**what is proven** and **what is NOT proven**. CI ([`.gitlab-ci.yml`])
-is the single source of truth for which tests run; this doc says
-why each one exists.
+This document is the truth table for the tests and smoke checks shipped
+with `cute-pcap-mcp`. Every test row says **what is proven** and **what
+is NOT proven**. CI or release automation should run these same classes
+of checks; this doc says why each one exists.
 
-[`.gitlab-ci.yml`]: ../.gitlab-ci.yml
-
-## CI stages
+## Check Classes
 
 | Stage | Image | What it proves | What it does not prove |
 | --- | --- | --- | --- |
 | `lint` | `golang:1.26-bookworm` | `go vet ./...` passes — no unreachable code, no Printf format mismatches, no shadowed vars caught by vet. | Style or naming conventions; we don't run a separate linter today. |
 | `unit` | `golang:1.26-bookworm` | The full Go test suite passes on a host **without** packet analyzers. Tests that require tshark / Zeek / capinfos call `requireCommand` and skip cleanly. | That tshark/Zeek behaviors are correct on real captures. The `integration` stage covers that. |
 | `build` | `golang:1.26-bookworm` | `make build` produces a `bin/cute-pcap-mcp` binary; the binary's `--version` exits 0. The artifact is archived for 7 days. | That the binary runs correctly inside the Docker image. The `docker` stage covers that. |
-| `release-binary` matrix | `golang:1.26-bookworm` | Each matrix job runs `make release-binaries` for one OS/arch pair and archives only that platform tarball plus `dist/checksums.txt`. | That every cross-compiled binary runs on its target OS/arch. CI proves compilation and checksums, not runtime execution on those platforms. |
+| `release-binary` matrix | `golang:1.26-bookworm` | Each matrix job runs `make release-binaries` for one OS/arch pair and archives only that platform tarball plus `dist/checksums.txt`. | That every cross-compiled binary runs on its target OS/arch. Cross-compilation proves compilation and checksums, not runtime execution on those platforms. |
 | `skill-package` matrix | `golang:1.26-bookworm` + `zip` / `unzip` | Each matrix job packages one Claude/Codex skill ZIP and verifies `SKILL.md` is at the ZIP root. | That Claude's hosted skill UI accepts a given ZIP in every future UI version. |
 | `skills-bundle` | `golang:1.26-bookworm` + `zip` / `unzip` | `make skills-bundle` packages every skill ZIP, then creates one convenience ZIP containing those ZIPs plus their checksum file. | That users installed every skill. The bundle is only a download convenience; Claude still imports skill ZIPs individually. |
-| `docker` | `docker:24` + dind service | The runtime image builds reproducibly. Every analyzer the runtime promises (`cute-pcap-mcp`, `tshark`, `capinfos`, `tcpdump`, `zeek`, `jq`, `python3`) resolves on PATH inside the image. `cute-pcap-mcp --version` exits 0 from the entrypoint. Default-branch and tag pipelines push to the GitLab registry when registry variables are available. | That Zeek-derived sections are populated end-to-end. The `integration` stage covers that. |
+| `docker` | Docker Engine | The runtime image builds reproducibly. Every analyzer the runtime promises (`cute-pcap-mcp`, `tshark`, `capinfos`, `tcpdump`, `zeek`, `jq`, `python3`) resolves on PATH inside the image. `cute-pcap-mcp --version` exits 0 from the entrypoint. | That Zeek-derived sections are populated end-to-end. The `integration` stage covers that. |
 | `integration` | `zeek/zeek:lts` + apt-installed `tshark` / `jq` / `python3` + downloaded Go | The full test suite **with** every integration test running (no skips). Exercises the tshark / Zeek format contract against deterministic synthetic captures. | That the runtime image's specific tshark / Zeek versions agree with `zeek/zeek:lts`. The `docker` stage covers binary presence; integration covers behavior on the LTS Zeek build. |
 
 ## What the integration stage proves end-to-end
@@ -32,7 +29,7 @@ Locally, these tests skip when the named binaries are absent.
 | --- | --- | --- |
 | `TestAnalyzeArtifactIntegrationWithPacketTools` | One-packet HTTP/TLS pcap from `syntheticHTTPPcap` | `pcap_analyze` populates `capture_summary`, `protocols`, `conversations`, `packets`, `dns`/`http`/`tls` from Zeek logs (when present), `ascii` with redaction. The `schema_version` is stamped. |
 | `TestAnalyzeArtifactBubblesInvalidFilterToTopLevel` | Same pcap + bogus display filter | Invalid display filters from tshark surface as the typed `invalid_filter` kind in `out.Errors[]` and as a finding. They are not hidden inside the tshark sub-report. |
-| `TestRunZeekReportUsesWorkspaceTmpDir` | Same pcap | Zeek's per-call workdir lands under `cfg.Workspace.TmpDir` rather than `/tmp`, honoring the M1 workspace contract. |
+| `TestRunZeekReportUsesWorkspaceTmpDir` | Same pcap | Zeek's per-call workdir lands under `cfg.Workspace.TmpDir` rather than `/tmp`, honoring the workspace contract. |
 
 ### `pcap_filter`
 
@@ -55,7 +52,7 @@ Locally, these tests skip when the named binaries are absent.
 
 | Test | Synthetic input | Proves |
 | --- | --- | --- |
-| `TestAnalyzeArtifactIntegrationProfileFindingsSurvive` | Same pcap + `analysis_profile=f5_ltm_tls_debug` + VIP context | The dispatcher's `analysis_profile_applied` finding is merged into `out.Findings` after `buildFindings` (regression pin against the M4 round-1 overwrite bug). The unknown-name path emits `analysis_profile_unknown`. |
+| `TestAnalyzeArtifactIntegrationProfileFindingsSurvive` | Same pcap + `analysis_profile=f5_ltm_tls_debug` + VIP context | The dispatcher's `analysis_profile_applied` finding is merged into `out.Findings` after `buildFindings`. The unknown-name path emits `analysis_profile_unknown`. |
 | `TestExplainConnectionPassesKeylogToAnalyzePipeline` | Header-only pcap + valid `tls_keylog_path` under `keylog_dir` | `pcap_explain_connection` carries `tls_keylog_path` through the synthesized `analyzeInput`; the response's `tls_decryption.status` reflects the keylog plumbing (not `not_requested`). |
 
 ### Privacy and redaction
@@ -92,12 +89,12 @@ helper. The full set lives in `internal/pcap/*_test.go` and
   `TestF5ProfilePortOnlyContextRefusesClientsideClaim` — pin the
   truth-over-closure boundary on the load-balancer profile.
 - `TestFinalizeTLSDecryptionDoesNotPromoteOnHandshakeOnly` —
-  regression pin against the M5 round-1 unsound succeeded
-  promotion.
+  verifies TLS keylog attempts are not promoted to `succeeded` from
+  handshake visibility alone.
 - `TestInspectArtifactRejectsHashMismatch` /
   `TestInspectArtifactRejectsSizeMismatch` /
-  `TestHashMismatchMessageDoesNotEchoCallerValue` — pin the M3
-  external artifact reference contract.
+  `TestHashMismatchMessageDoesNotEchoCallerValue` — pin the external
+  artifact reference contract.
 
 ## Fixtures
 
@@ -152,10 +149,11 @@ make integration-test
   trades any unbounded-output bug for a typed error.
 - Behavior on captures we haven't synthesized in tests (e.g. SCTP,
   GTP, vendor-proprietary encapsulations). The generic analyze
-  pipeline forwards whatever tshark / Zeek emit; CI does not gate
+  pipeline forwards whatever tshark / Zeek emit; tests do not gate
   on those formats.
 - Compatibility with companion MCP servers or any other external
   producer beyond the `ArtifactReference` shape documented in
   [`PCAP_SERVER_CONTRACT.md`](./PCAP_SERVER_CONTRACT.md).
-- The runtime under non-`linux/amd64` hosts. The Dockerfile builds
-  for the runner's native arch; CI runs on amd64 today.
+- The runtime under every possible host architecture. The Dockerfile
+  builds for the local Docker daemon's native architecture unless a
+  separate multi-arch build is configured.

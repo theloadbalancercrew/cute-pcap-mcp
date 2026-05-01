@@ -92,8 +92,8 @@ type TCPHealthSection struct {
 }
 
 // OutputArtifact is the wire shape for a server-written derived
-// artifact (analysis.json or summary.md today; pcap_filter outputs
-// in M2b). The path is server-generated under
+// artifact (analysis.json, summary.md, or pcap_filter outputs). The
+// path is server-generated under
 // `cfg.Workspace.OutputDir`; the operator never supplies output
 // paths.
 type OutputArtifact struct {

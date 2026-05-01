@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// TestServerRegistersStableAndLegacyToolNames pins the M2 alias
-// contract: both the stable pcap_* names and their legacy aliases
-// remain registered. The drift ratchet
+// TestServerRegistersStableAndLegacyToolNames pins the alias contract:
+// both the stable pcap_* names and their legacy aliases remain
+// registered. The drift ratchet
 // (TestToolReferenceCoversEveryRegisteredTool) catches docs drift; this
 // test catches a future refactor that drops a name without touching
 // docs.

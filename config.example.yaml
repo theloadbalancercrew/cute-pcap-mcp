@@ -21,7 +21,7 @@ workspace:
   output_dir: ""
   tmp_dir: ""
   # keylog_dir is the optional allowlist for SSLKEYLOGFILE inputs to
-  # pcap_analyze (M5). When set, tls_keylog_path values must resolve
+  # pcap_analyze. When set, tls_keylog_path values must resolve
   # strictly under this directory. When empty, every keylog input
   # is reported as tls_decryption.status: unavailable.
   keylog_dir: ""
@@ -44,5 +44,4 @@ analysis:
   # (e.g. Zeek workdirs). Default is 512 MiB.
   tmp_disk_budget_bytes: 536870912
   # output_disk_budget_bytes caps derived JSON / Markdown artifacts.
-  # The emission path lands in M2; M1 just plumbs the budget.
   output_disk_budget_bytes: 268435456

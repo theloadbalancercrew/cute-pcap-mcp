@@ -14,7 +14,7 @@ set -eu
 #   CUTE_PCAP_MCP_CONFIG  Host config bind-mounted to /config/config.yaml.
 #   CUTE_PCAP_MCP_DOCKER  Docker CLI path.
 
-image="${CUTE_PCAP_MCP_IMAGE:-registry.thelbc.io/cute-pm/cute-pcap-mcp:latest}"
+image="${CUTE_PCAP_MCP_IMAGE:-cute-pcap-mcp:latest}"
 work_dir="${CUTE_PCAP_MCP_WORK:-$HOME/mcp-work}"
 config_file="${CUTE_PCAP_MCP_CONFIG:-$work_dir/config.docker.yaml}"
 docker_bin="${CUTE_PCAP_MCP_DOCKER:-docker}"

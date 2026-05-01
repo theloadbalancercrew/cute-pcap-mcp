@@ -73,7 +73,7 @@ func TestRunFilterRejectsMissingOutputDir(t *testing.T) {
 }
 
 // TestRunFilterIntegration exercises the tshark write path end to
-// end. Skipped when tshark is not on PATH; CI in M6 will run it.
+// end. Skipped when tshark is not on PATH.
 func TestRunFilterIntegration(t *testing.T) {
 	requireCommand(t, "tshark")
 

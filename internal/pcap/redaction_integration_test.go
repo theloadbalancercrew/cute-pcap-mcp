@@ -13,8 +13,8 @@ import (
 	"cute-pcap-mcp/internal/config"
 )
 
-// TestNoSecretLeaksAcrossEntireResponse pins the M2 redaction
-// contract (issue #1): a synthetic pcap stuffed with fake credentials
+// TestNoSecretLeaksAcrossEntireResponse pins the redaction contract:
+// a synthetic pcap stuffed with fake credentials
 // drives the full analyze pipeline (capinfos / tshark / Zeek / ASCII)
 // and the test asserts that none of the unredacted secret values
 // appear in the persisted analysis.json, summary.md, ASCII strings,

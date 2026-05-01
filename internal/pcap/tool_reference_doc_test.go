@@ -1,11 +1,10 @@
 package pcap
 
-// Mechanical alignment ratchet for #16: every tool the PCAP MCP server
-// actually registers must appear in docs/TOOL_REFERENCE.md. New tools
-// land in this doc in the same MR that registers them; if a future MR
-// adds a registered tool but forgets the docs update, this test fails
-// so the contract reference can never silently describe a stale
-// surface.
+// Mechanical alignment ratchet: every tool the PCAP MCP server actually
+// registers must appear in docs/TOOL_REFERENCE.md. New tools land in
+// this doc with their implementation; if a future change adds a
+// registered tool but forgets the docs update, this test fails so the
+// contract reference can never silently describe a stale surface.
 //
 // The check is intentionally narrow: it asserts each registered tool
 // name appears as a `### \`<tool_name>\`` section header in the doc.

@@ -359,7 +359,7 @@ Stable `kind` tokens:
   `OutputArtifact` references read them from the in-memory MCP
   response, not from the persisted JSON.
 - `summary_markdown` — human-readable capture summary.
-- `filtered_pcap` — derived pcap from `pcap_filter` (M2b).
+- `filtered_pcap` — derived pcap from `pcap_filter`.
 
 Hosts switch on `kind`, never on file extension or path. The path is
 informational only; the same artifact can be re-read by SHA-256
@@ -419,9 +419,9 @@ truthful evidence and the missing/failed sections are documented in
 ## Error kinds
 
 The full set is defined in [`errors.go`](../internal/pcap/errors.go)
-as `ErrorKind*` constants. Kinds without an active emission site
-today are reserved here so future milestones can land them without a
-wire change.
+as `ErrorKind*` constants. Kinds without an active emission site today
+are reserved here so future releases can land them without a wire
+change.
 
 | Kind | Emitted today | Description |
 | --- | --- | --- |

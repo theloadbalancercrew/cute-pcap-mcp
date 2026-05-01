@@ -37,7 +37,7 @@ type explainInput struct {
 
 // FiveTuple is the explicit connection selector. Protocol must be
 // "tcp" or "udp" — those are the only connection-oriented stacks
-// the explain tool builds filters for in M2b.
+// the explain tool builds filters for.
 type FiveTuple struct {
 	SourceIP   string `json:"source_ip"`
 	SourcePort int    `json:"source_port"`
