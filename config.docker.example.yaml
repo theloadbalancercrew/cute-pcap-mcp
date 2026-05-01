@@ -1,0 +1,28 @@
+# Docker MCP runtime config. Copy to $HOME/mcp-work/config.docker.yaml.
+#
+# Run the container with:
+#   -v $HOME/mcp-work:/work
+#   -v $HOME/mcp-work/config.docker.yaml:/config/config.yaml:ro
+#
+# MCP tool calls should use container paths such as /work/pcaps/example.pcap.
+
+allowed_artifact_dirs: []
+
+workspace:
+  root: /work
+  pcap_dir: ""
+  output_dir: ""
+  tmp_dir: ""
+  keylog_dir: /work/keylogs
+
+analysis:
+  command_timeout_seconds: 20
+  max_stdout_bytes: 200000
+  max_packet_rows: 200
+  max_ascii_strings: 200
+  max_ascii_bytes: 200000
+  max_zeek_records_per_log: 100
+  max_pcap_bytes: 1073741824
+  max_concurrent_analyses: 2
+  tmp_disk_budget_bytes: 536870912
+  output_disk_budget_bytes: 268435456

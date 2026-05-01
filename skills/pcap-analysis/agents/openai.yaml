@@ -1,0 +1,9 @@
+interface:
+  display_name: "PCAP Analysis"
+  short_description: "Analyze packet captures with evidence discipline"
+  icon_small: "./assets/icon.svg"
+  icon_large: "./assets/icon.svg"
+  brand_color: "#2563EB"
+  default_prompt: "Use $pcap-analysis to inspect this packet capture and explain only what the evidence proves."
+policy:
+  allow_implicit_invocation: true

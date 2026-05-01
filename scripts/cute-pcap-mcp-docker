@@ -1,0 +1,40 @@
+#!/usr/bin/env sh
+set -eu
+
+# Stdio MCP wrapper for running cute-pcap-mcp through Docker.
+#
+# Defaults are chosen to match docs/QUICKSTART.md:
+#   host workspace:  $HOME/mcp-work
+#   container mount: /work
+#   config file:     $HOME/mcp-work/config.docker.yaml
+#
+# Override with:
+#   CUTE_PCAP_MCP_IMAGE   Docker image to run.
+#   CUTE_PCAP_MCP_WORK    Host workspace bind-mounted to /work.
+#   CUTE_PCAP_MCP_CONFIG  Host config bind-mounted to /config/config.yaml.
+#   CUTE_PCAP_MCP_DOCKER  Docker CLI path.
+
+image="${CUTE_PCAP_MCP_IMAGE:-registry.thelbc.io/cute-pm/cute-pcap-mcp:latest}"
+work_dir="${CUTE_PCAP_MCP_WORK:-$HOME/mcp-work}"
+config_file="${CUTE_PCAP_MCP_CONFIG:-$work_dir/config.docker.yaml}"
+docker_bin="${CUTE_PCAP_MCP_DOCKER:-docker}"
+
+if ! command -v "$docker_bin" >/dev/null 2>&1; then
+  echo "cute-pcap-mcp-docker: docker CLI not found: $docker_bin" >&2
+  exit 127
+fi
+
+if [ ! -d "$work_dir" ]; then
+  echo "cute-pcap-mcp-docker: workspace directory not found: $work_dir" >&2
+  exit 1
+fi
+
+if [ ! -f "$config_file" ]; then
+  echo "cute-pcap-mcp-docker: config file not found: $config_file" >&2
+  exit 1
+fi
+
+exec "$docker_bin" run --rm -i \
+  -v "$work_dir:/work" \
+  -v "$config_file:/config/config.yaml:ro" \
+  "$image" -c /config/config.yaml "$@"

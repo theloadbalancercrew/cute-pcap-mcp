@@ -1,0 +1,23 @@
+cases:
+  - prompt: "my app is slow, can you help me figure out what to capture?"
+    expected_skills:
+      - network-triage
+      - capture-planning
+  - prompt: "analyze /work/pcaps/foo.pcap and tell me what the packets prove"
+    expected_skills:
+      - pcap-analysis
+  - prompt: "the HTTPS capture is encrypted; can we use an SSLKEYLOGFILE?"
+    expected_skills:
+      - tls-decryption
+      - pcap-analysis
+  - prompt: "write a customer report from this pcap analysis"
+    expected_skills:
+      - pcap-report-writer
+      - pcap-analysis
+  - prompt: "write a weekly status report"
+    expected_skills: []
+    notes: "pcap-report-writer should not trigger without packet evidence."
+  - prompt: "VIP 192.0.2.10 resets before reaching the pool member"
+    expected_skills:
+      - load-balancer-path-debug
+      - network-triage

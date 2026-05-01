@@ -1,0 +1,48 @@
+# Copy to config.local.yaml and edit for your machine/container.
+#
+# The canonical container shape is `-v ~/mcp-work:/work` with
+# pcap inputs under /work/pcaps, derived artifacts under /work/output,
+# and per-call temp work under /work/tmp.
+
+# allowed_artifact_dirs is the legacy / explicit input root list. It
+# must contain at least one directory unless workspace.pcap_dir is
+# set. workspace.pcap_dir (when set) is implicitly added to this list.
+allowed_artifact_dirs:
+  - ./captures
+
+workspace:
+  # Set workspace.root to the bind-mount target inside the container
+  # (typically /work). When root is set, pcap_dir / output_dir /
+  # tmp_dir default to ${root}/pcaps, ${root}/output, ${root}/tmp.
+  # Leave root empty on a host install if you want to set
+  # pcap_dir / output_dir / tmp_dir explicitly.
+  root: ""
+  pcap_dir: ""
+  output_dir: ""
+  tmp_dir: ""
+  # keylog_dir is the optional allowlist for SSLKEYLOGFILE inputs to
+  # pcap_analyze (M5). When set, tls_keylog_path values must resolve
+  # strictly under this directory. When empty, every keylog input
+  # is reported as tls_decryption.status: unavailable.
+  keylog_dir: ""
+
+analysis:
+  command_timeout_seconds: 20
+  max_stdout_bytes: 200000
+  max_packet_rows: 200
+  max_ascii_strings: 200
+  max_ascii_bytes: 200000
+  max_zeek_records_per_log: 100
+  # max_pcap_bytes rejects files larger than this before any external
+  # analyzer runs. Default is 1 GiB.
+  max_pcap_bytes: 1073741824
+  # max_concurrent_analyses caps in-flight analyzer-bearing tool calls
+  # (analyze_pcap, summarize_pcap). Over-budget calls return the typed
+  # analysis_busy error rather than queueing.
+  max_concurrent_analyses: 2
+  # tmp_disk_budget_bytes caps per-call analyzer temp work
+  # (e.g. Zeek workdirs). Default is 512 MiB.
+  tmp_disk_budget_bytes: 536870912
+  # output_disk_budget_bytes caps derived JSON / Markdown artifacts.
+  # The emission path lands in M2; M1 just plumbs the budget.
+  output_disk_budget_bytes: 268435456

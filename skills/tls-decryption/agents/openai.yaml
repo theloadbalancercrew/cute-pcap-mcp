@@ -1,0 +1,9 @@
+interface:
+  display_name: "TLS Decryption"
+  short_description: "Guide SSLKEYLOGFILE capture and TLS evidence"
+  icon_small: "./assets/icon.svg"
+  icon_large: "./assets/icon.svg"
+  brand_color: "#B45309"
+  default_prompt: "Use $tls-decryption to help me capture and analyze decryptable HTTPS traffic."
+policy:
+  allow_implicit_invocation: true

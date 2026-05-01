@@ -1,0 +1,9 @@
+/.local/
+/bin/
+/dist/
+/tmp/
+/captures/
+config.yaml
+*.local.yaml
+*.pcap
+*.pcapng

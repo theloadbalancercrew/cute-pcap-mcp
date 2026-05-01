@@ -1,0 +1,250 @@
+# cute-pcap-mcp GitLab CI pipeline.
+#
+# Stages:
+#   lint:        go vet on a vanilla golang image (fast, no analyzers).
+#   unit:        go test ./... on a vanilla golang image. Tests that
+#                require tshark/Zeek skip cleanly here.
+#   build:       make build, archives the cute-pcap-mcp binary, and
+#                matrix jobs archive one OS/arch release package each.
+#   docker:      builds the runtime image, runs docker-smoke against it,
+#                and publishes to the GitLab registry on default-branch
+#                and tag pipelines when registry variables are present.
+#   integration: go test ./... on an image with tshark / capinfos /
+#                Zeek / jq / python3 actually present, so the
+#                integration tests that skip locally run end-to-end.
+#                See docs/PCAP_TESTS_AND_SMOKE.md for the truth table.
+#
+# Pipeline rules:
+#   - Branch + MR pipelines run lint + unit + build + docker.
+#   - integration runs on every push (it's the only stage that
+#     exercises the full analyzer matrix and is the safety net
+#     against tshark / Zeek format drift).
+#   - Tags fan out to the same set and publish a tag-matched Docker
+#     image when the GitLab container registry is available.
+
+stages:
+  - lint
+  - unit
+  - build
+  - docker
+  - integration
+
+variables:
+  GO_IMAGE: "golang:1.26-bookworm"
+  ZEEK_IMAGE: "zeek/zeek:lts"
+  GOFLAGS: "-buildvcs=false"
+  GOCACHE: "$CI_PROJECT_DIR/.gocache"
+  GOMODCACHE: "$CI_PROJECT_DIR/.gomodcache"
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+# Reusable cache for go modules + build cache. Keyed on go.sum so a
+# dep bump invalidates cleanly; otherwise the cache survives across
+# branches.
+.go-cache: &go-cache
+  cache:
+    key:
+      files:
+        - go.sum
+    paths:
+      - .gocache/
+      - .gomodcache/
+
+lint:
+  stage: lint
+  image: $GO_IMAGE
+  <<: *go-cache
+  script:
+    - go vet ./...
+
+unit:
+  stage: unit
+  image: $GO_IMAGE
+  <<: *go-cache
+  script:
+    - go test -count=1 ./...
+
+build:
+  stage: build
+  image: $GO_IMAGE
+  <<: *go-cache
+  script:
+    - make build
+    - ./bin/cute-pcap-mcp --version
+  artifacts:
+    name: cute-pcap-mcp-$CI_COMMIT_SHORT_SHA
+    paths:
+      - bin/cute-pcap-mcp
+    expire_in: 7 days
+
+release-binary:
+  stage: build
+  image: $GO_IMAGE
+  <<: *go-cache
+  parallel:
+    matrix:
+      - TARGET_OS: ["linux", "darwin", "windows"]
+        TARGET_ARCH: ["amd64", "arm64"]
+  script:
+    - RELEASE_PLATFORMS="$TARGET_OS/$TARGET_ARCH" make release-binaries
+    - ls -lh dist
+    - cat dist/checksums.txt
+    - test -f "dist/cute-pcap-mcp-${TARGET_OS}-${TARGET_ARCH}.tar.gz"
+  artifacts:
+    name: cute-pcap-mcp-${TARGET_OS}-${TARGET_ARCH}-$CI_COMMIT_SHORT_SHA
+    paths:
+      - dist/cute-pcap-mcp-${TARGET_OS}-${TARGET_ARCH}.tar.gz
+      - dist/checksums.txt
+    expire_in: 30 days
+
+skill-package:
+  stage: build
+  image: $GO_IMAGE
+  parallel:
+    matrix:
+      - SKILL_NAME:
+          - capture-planning
+          - load-balancer-path-debug
+          - network-triage
+          - pcap-analysis
+          - pcap-report-writer
+          - tls-decryption
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends zip unzip
+    - rm -rf /var/lib/apt/lists/*
+  script:
+    - SKILLS="$SKILL_NAME" make skills-package
+    - ls -lh dist/skills
+    - cat dist/skills/checksums.txt
+    - unzip -Z1 "dist/skills/${SKILL_NAME}.zip" | awk '$0 == "SKILL.md" { found = 1 } END { exit !found }'
+  artifacts:
+    name: cute-pcap-mcp-skill-${SKILL_NAME}-$CI_COMMIT_SHORT_SHA
+    paths:
+      - dist/skills/${SKILL_NAME}.zip
+      - dist/skills/checksums.txt
+    expire_in: 30 days
+
+skills-bundle:
+  stage: build
+  image: $GO_IMAGE
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends zip unzip
+    - rm -rf /var/lib/apt/lists/*
+  script:
+    - make skills-bundle
+    - ls -lh dist dist/skills
+    - cat dist/skills/checksums.txt
+    - |
+      for archive in dist/skills/*.zip; do
+        echo "checking ${archive}"
+        unzip -Z1 "$archive" | awk '$0 == "SKILL.md" { found = 1 } END { exit !found }'
+      done
+    - unzip -Z1 dist/cute-pcap-mcp-skills-*.zip | sort
+    - unzip -Z1 dist/cute-pcap-mcp-skills-*.zip | awk '$0 == "checksums.txt" { found = 1 } END { exit !found }'
+    - unzip -Z1 dist/cute-pcap-mcp-skills-*.zip | awk '$0 == "pcap-analysis.zip" { found = 1 } END { exit !found }'
+  artifacts:
+    name: cute-pcap-mcp-skills-bundle-$CI_COMMIT_SHORT_SHA
+    paths:
+      - dist/cute-pcap-mcp-skills-*.zip
+      - dist/skills/checksums.txt
+    expire_in: 30 days
+
+docker:
+  stage: docker
+  image: "docker:24"
+  services:
+    - name: "docker:24-dind"
+      alias: docker
+      command: ["--tls=false"]
+  variables:
+    IMAGE: "cute-pcap-mcp:ci-$CI_COMMIT_SHORT_SHA"
+    # The docker:24-dind service exposes the daemon over TCP. Without
+    # this var the CLI falls back to /var/run/docker.sock (which is
+    # not bind-mounted from the runner), and the build fails with
+    # "Cannot connect to the Docker daemon". Pair this with the
+    # global DOCKER_TLS_CERTDIR: "" so the daemon listens on plain
+    # TCP, not TLS.
+    DOCKER_HOST: "tcp://docker:2375"
+  script:
+    - |
+      echo "Waiting for Docker daemon at ${DOCKER_HOST}..."
+      for i in $(seq 1 60); do
+        if docker info >/dev/null 2>&1; then
+          docker info --format 'Docker server: {{.ServerVersion}}'
+          break
+        fi
+        if [ "$i" -eq 60 ]; then
+          echo "Docker daemon was not reachable at ${DOCKER_HOST} after 60s" >&2
+          docker info || true
+          exit 1
+        fi
+        sleep 1
+      done
+    - 'docker build --build-arg VERSION="$CI_COMMIT_SHORT_SHA" --build-arg COMMIT="$CI_COMMIT_SHA" --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t "$IMAGE" .'
+    # docker-smoke: every required binary on PATH inside the image.
+    # The Dockerfile RUN-time check covers this at build time; rerunning
+    # from the runtime user catches layer-ordering drift.
+    - 'docker run --rm --entrypoint /bin/sh "$IMAGE" -c ''set -eu; for bin in cute-pcap-mcp tshark capinfos tcpdump zeek jq python3; do command -v "$bin" >/dev/null 2>&1 || { echo "$bin missing from runtime image" >&2; exit 1; }; done; echo "docker-smoke: all required binaries present"'''
+    # The image entrypoint is the MCP server speaking stdio; --version
+    # exits 0 cleanly without trying to open the stdio transport.
+    - 'docker run --rm "$IMAGE" --version'
+    - |
+      if [ -z "${CI_REGISTRY_IMAGE:-}" ] || [ -z "${CI_REGISTRY:-}" ] || [ -z "${CI_REGISTRY_USER:-}" ] || [ -z "${CI_REGISTRY_PASSWORD:-}" ]; then
+        echo "GitLab container registry variables are not configured; skipping docker push."
+        exit 0
+      fi
+
+      if [ -z "${CI_COMMIT_TAG:-}" ] && [ "${CI_COMMIT_BRANCH:-}" != "${CI_DEFAULT_BRANCH:-main}" ]; then
+        echo "Not a default-branch or tag pipeline; skipping docker push."
+        exit 0
+      fi
+
+      echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+
+      docker tag "$IMAGE" "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+      docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        docker tag "$IMAGE" "$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"
+        docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"
+      fi
+
+      if [ -n "${CI_COMMIT_BRANCH:-}" ] && [ "${CI_COMMIT_BRANCH:-}" = "${CI_DEFAULT_BRANCH:-main}" ]; then
+        docker tag "$IMAGE" "$CI_REGISTRY_IMAGE:latest"
+        docker push "$CI_REGISTRY_IMAGE:latest"
+      fi
+
+# Integration runs every test the unit job skipped because tshark /
+# Zeek were absent. Uses the upstream Zeek LTS image plus apt-installed
+# tshark/jq/python3 plus a one-shot Go install. Cache hits keep the
+# Go install fast on subsequent runs.
+integration:
+  stage: integration
+  image: $ZEEK_IMAGE
+  <<: *go-cache
+  variables:
+    GO_VERSION: "1.26.1"
+  before_script:
+    - export DEBIAN_FRONTEND=noninteractive
+    - apt-get update
+    - apt-get install -y --no-install-recommends ca-certificates curl tshark jq python3
+    - rm -rf /var/lib/apt/lists/*
+    # tshark + capinfos must both be available; the wireshark-common
+    # package brings capinfos in via the tshark dependency on Bookworm.
+    - command -v tshark
+    - command -v capinfos
+    - command -v zeek
+    - command -v jq
+    - command -v python3
+    # Install Go. Cached via the .go-cache key so this only refetches
+    # when the go.sum (and therefore the Go toolchain we depend on)
+    # changes via go.mod.
+    - if [ ! -x "/usr/local/go/bin/go" ]; then
+        curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -C /usr/local -xz;
+      fi
+    - export PATH=/usr/local/go/bin:$PATH
+    - go version
+  script:
+    - go test -count=1 ./...

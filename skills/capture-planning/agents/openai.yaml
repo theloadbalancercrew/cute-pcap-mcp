@@ -1,0 +1,9 @@
+interface:
+  display_name: "Capture Planning"
+  short_description: "Generate tcpdump and traffic capture recipes"
+  icon_small: "./assets/icon.svg"
+  icon_large: "./assets/icon.svg"
+  brand_color: "#7C3AED"
+  default_prompt: "Use $capture-planning to give me commands to capture this traffic and put it where the MCP server can analyze it."
+policy:
+  allow_implicit_invocation: true
