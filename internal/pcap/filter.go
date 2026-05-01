@@ -47,7 +47,7 @@ func filterErrorOutput(source ArtifactInfo, terr toolError) filterOutput {
 
 // validateFilterInput pins the input shape: path required,
 // display_filter required (non-empty), bounded length, no NUL bytes.
-// Reuses ValidationReason* tokens from the M0 taxonomy.
+// Reuses the shared ValidationReason* tokens.
 func validateFilterInput(input filterInput) error {
 	if input.Path == "" {
 		return missingFieldError("path")

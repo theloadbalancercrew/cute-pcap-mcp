@@ -194,29 +194,24 @@ func TestFinalizeTLSDecryptionStatus(t *testing.T) {
 	}
 }
 
-// TestFinalizeTLSDecryptionDoesNotPromoteOnHandshakeOnly is the
-// regression-pin for the M5 round-2 fix. Even when the analyze pass
-// surfaces TLS handshake summaries (which it always does for any
-// pcap with TLS, regardless of decryption), the finalizer must NOT
-// promote attempted → succeeded. The previous heuristic would have
-// reported succeeded for any random file passed as tls_keylog_path
-// against a TLS-bearing pcap.
+// TestFinalizeTLSDecryptionDoesNotPromoteOnHandshakeOnly pins the
+// conservative TLS status contract. Even when the analyze pass surfaces
+// TLS handshake summaries (which it always does for any pcap with TLS,
+// regardless of decryption), the finalizer must NOT promote attempted
+// to succeeded.
 func TestFinalizeTLSDecryptionDoesNotPromoteOnHandshakeOnly(t *testing.T) {
 	out := finalizeTLSDecryptionStatus(TLSDecryptionStatusAttempted, "", false, "/keylog/keys.log")
 	if out.Status == TLSDecryptionStatusSucceeded {
-		t.Fatal("finalizer falsely promoted to succeeded; M5 round 2 reverted that promotion")
+		t.Fatal("finalizer falsely promoted to succeeded")
 	}
 	if out.Status != TLSDecryptionStatusAttempted {
 		t.Fatalf("Status = %q, want %q (clean keylog run stays at attempted)", out.Status, TLSDecryptionStatusAttempted)
 	}
 }
 
-// TestExplainConnectionPassesKeylogToAnalyzePipeline pins the
-// M5-round-2 fix: pcap_explain_connection must carry
-// tls_keylog_path through the synthesized analyzeInput. The
-// previous version dropped the field, so the explain tool always
-// reported tls_decryption.status: not_requested even when a keylog
-// was supplied.
+// TestExplainConnectionPassesKeylogToAnalyzePipeline pins that
+// pcap_explain_connection carries tls_keylog_path through the
+// synthesized analyzeInput.
 func TestExplainConnectionPassesKeylogToAnalyzePipeline(t *testing.T) {
 	root := t.TempDir()
 	pcapDir := filepath.Join(root, "pcaps")
@@ -277,10 +272,10 @@ func TestExplainConnectionPassesKeylogToAnalyzePipeline(t *testing.T) {
 	}
 }
 
-// TestAnalyzeErrorOutputStampsTLSDecryptionField pins the M5-round-2
-// fix that hard-error responses always carry the tls_decryption
-// field (status: not_requested) so hosts can switch on it without
-// the field disappearing on validation/path/busy errors.
+// TestAnalyzeErrorOutputStampsTLSDecryptionField pins that hard-error
+// responses always carry the tls_decryption field (status:
+// not_requested) so hosts can switch on it without the field
+// disappearing on validation/path/busy errors.
 func TestAnalyzeErrorOutputStampsTLSDecryptionField(t *testing.T) {
 	terr := toolError{Kind: ErrorKindMissingField, Message: "x"}
 	out := analyzeErrorOutput(ArtifactInfo{}, terr)

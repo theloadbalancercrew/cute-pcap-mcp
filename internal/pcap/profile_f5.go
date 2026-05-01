@@ -156,8 +156,8 @@ func buildF5LTMTLSDebugProfile(out analyzeOutput, summary *AnalysisSummary, ctx 
 //
 // The summary parameter is the AnalysisSummary built from every
 // returned Zeek conn record, not just the reset-bearing subset on
-// TCPHealth. This is the fix for the M4 review's "ignores normal
-// flows" finding — previously the classifier only saw resets.
+// TCPHealth. This keeps normal non-reset flows visible to the
+// classifier.
 func buildSNATHints(summary *AnalysisSummary, ctx *F5Context) []F5SNATHint {
 	var hints []F5SNATHint
 

@@ -55,22 +55,22 @@ Use Docker when you want the same analyzer behavior on every OS.
 
 ### Get The Image
 
-If the project container registry is enabled, use the image from the
-GitLab registry:
+For a first local setup, build the Docker image from the repo:
 
 ```sh
-docker pull registry.thelbc.io/cute-pm/cute-pcap-mcp:latest
-```
-
-If the registry is not available to you, build locally from the repo:
-
-```sh
-git clone https://gitlab.thelbc.io/cute-pm/cute-pcap-mcp.git
+git clone https://github.com/theloadbalancercrew/cute-pcap-mcp.git
 cd cute-pcap-mcp
 make docker-build
 ```
 
 Local builds produce `cute-pcap-mcp:latest`.
+
+If a published GitHub Container Registry image is available to your
+account, you can use it instead:
+
+```sh
+docker pull ghcr.io/theloadbalancercrew/cute-pcap-mcp:latest
+```
 
 ### Docker Server Config
 
@@ -133,7 +133,7 @@ release archives under `scripts/cute-pcap-mcp-docker`.
 
 The wrapper defaults to:
 
-- image: `registry.thelbc.io/cute-pm/cute-pcap-mcp:latest`
+- image: `cute-pcap-mcp:latest`
 - host workspace: `$HOME/mcp-work`
 - host config: `$HOME/mcp-work/config.docker.yaml`
 - container workspace: `/work`
@@ -163,7 +163,7 @@ If you built locally, set `CUTE_PCAP_MCP_IMAGE=cute-pcap-mcp:latest`.
 Windows PowerShell:
 
 ```powershell
-$IMAGE = "registry.thelbc.io/cute-pm/cute-pcap-mcp:latest"
+$IMAGE = "cute-pcap-mcp:latest"
 
 docker run --rm -i `
   -v "$HOME\mcp-work:/work" `
@@ -188,7 +188,7 @@ Config file locations:
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - Linux, if your build supports it: `~/.config/Claude/claude_desktop_config.json`
 
-Example using the GitLab registry image:
+Example using the wrapper with the default local image:
 
 ```json
 {
@@ -232,7 +232,7 @@ On Windows, use the raw Docker form and escape backslashes in JSON:
         "C:\\Users\\you\\mcp-work:/work",
         "-v",
         "C:\\Users\\you\\mcp-work\\config.docker.yaml:/config/config.yaml:ro",
-        "registry.thelbc.io/cute-pm/cute-pcap-mcp:latest",
+        "cute-pcap-mcp:latest",
         "-c",
         "/config/config.yaml"
       ]
@@ -338,7 +338,7 @@ install -m 0755 cute-pcap-mcp-darwin-arm64/cute-pcap-mcp /usr/local/bin/cute-pca
 Or build from source:
 
 ```sh
-git clone https://gitlab.thelbc.io/cute-pm/cute-pcap-mcp.git
+git clone https://github.com/theloadbalancercrew/cute-pcap-mcp.git
 cd cute-pcap-mcp
 make build
 ./bin/cute-pcap-mcp --version

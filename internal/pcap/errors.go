@@ -12,9 +12,7 @@ import (
 //
 // Emission status is documented per tool in docs/PCAP_SERVER_CONTRACT.md.
 // Kinds defined here without an emission site today exist so future
-// milestones (workspace size limits, artifact reference validation,
-// concurrent analyzer budgets) can land an emission point without a wire
-// change.
+// releases can land an emission point without a wire change.
 const (
 	// ErrorKindInvalidRequest is the catch-all kind for malformed input
 	// that does not have a more specific token. Prefer a typed kind
@@ -45,7 +43,7 @@ const (
 	ErrorKindArtifactNotFound = "artifact_not_found"
 
 	// ErrorKindPCAPTooLarge is emitted when an allowlisted pcap exceeds
-	// the configured byte budget. Lands with the workspace work in M1.
+	// the configured byte budget.
 	ErrorKindPCAPTooLarge = "pcap_too_large"
 
 	// ErrorKindEmptyCapture is emitted when capinfos or tshark report
@@ -64,13 +62,11 @@ const (
 	ErrorKindInvalidFilter = "invalid_filter"
 
 	// ErrorKindHashMismatch is emitted when a caller-provided
-	// expected_sha256 disagrees with the on-disk artifact. Lands with
-	// the external artifact reference work in M3.
+	// expected_sha256 disagrees with the on-disk artifact.
 	ErrorKindHashMismatch = "hash_mismatch"
 
 	// ErrorKindSizeMismatch is emitted when a caller-provided
-	// expected_size_bytes disagrees with the on-disk artifact. Lands
-	// with the external artifact reference work in M3.
+	// expected_size_bytes disagrees with the on-disk artifact.
 	ErrorKindSizeMismatch = "size_mismatch"
 
 	// ErrorKindOutputLimitReached is emitted when the per-call output
@@ -81,12 +77,10 @@ const (
 
 	// ErrorKindTmpBudgetExceeded is emitted when the configured tmp-dir
 	// disk budget would be exceeded by a Zeek run or other temp work.
-	// Lands with the workspace work in M1.
 	ErrorKindTmpBudgetExceeded = "tmp_budget_exceeded"
 
 	// ErrorKindAnalysisBusy is emitted when the configured concurrent
-	// analyzer cap is reached and the call cannot proceed. Lands with
-	// the workspace work in M1.
+	// analyzer cap is reached and the call cannot proceed.
 	ErrorKindAnalysisBusy = "analysis_busy"
 
 	// ErrorKindAnalyzerUnavailable is emitted when an external analyzer

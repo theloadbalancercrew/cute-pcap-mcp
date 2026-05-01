@@ -217,9 +217,8 @@ func registerTools(server *mcp.Server, state *serverState) {
 	cfg := state.cfg
 	logger := state.logger
 
-	// pcap_validate is the new stable name. inspect_pcap is kept as a
-	// compatibility alias for one release per the M2 deprecation
-	// policy in docs/TOOL_REFERENCE.md.
+	// pcap_validate is the stable name. inspect_pcap is kept as a
+	// compatibility alias for older clients.
 	for _, name := range []string{"pcap_validate", "inspect_pcap"} {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        name,
@@ -436,7 +435,7 @@ func registerTools(server *mcp.Server, state *serverState) {
 }
 
 // artifactExpectations carries optional caller-provided checksums
-// for the external artifact reference contract (M3 #8). SHA256 is
+// for the external artifact reference contract. SHA256 is
 // empty when not supplied; SizeBytes is nil when not supplied (the
 // pointer distinguishes "no expectation" from "expect a zero-byte
 // file"). inspectArtifact enforces only the set fields.
@@ -579,4 +578,3 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	_, _ = b.Buffer.Write(p)
 	return originalLen, nil
 }
-

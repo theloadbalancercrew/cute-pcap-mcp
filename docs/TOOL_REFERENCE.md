@@ -382,8 +382,7 @@ Tool errors:
 ### `inspect_pcap`
 
 Compatibility alias for `pcap_validate`. Same input, output, and
-error set. Will be removed one release after `pcap_validate` is
-documented as the stable name (target: M3 release).
+error set. New clients should call `pcap_validate` directly.
 
 ### `pcap_analyzer_status`
 
@@ -440,19 +439,16 @@ Tool errors:
 ### `analyze_pcap`
 
 Compatibility alias for `pcap_analyze`. Same input, output, and
-error set. Will be removed one release after `pcap_analyze` is
-documented as the stable name (target: M3 release).
+error set. New clients should call `pcap_analyze` directly.
 
 ## What's NOT shipped (today)
 
-The tools below are roadmap. They will be registered in later
-milestones. Their names are reserved here so callers can orient on the
-final surface.
+The tools below are planned but not registered by this release.
 
 _(no remaining roadmap items at this layer; profile and decryption
 inputs are documented in their own sections above)_
 
 Capture acquisition, remote file copy, and device-specific workflows are
 intentionally not in this repo. They belong to humans, scripts, or
-external MCP servers. See [`ROADMAP.md`](./ROADMAP.md) for the M3
-external artifact reference contract.
+external MCP servers. See [`ROADMAP.md`](./ROADMAP.md) for project
+boundaries and future work.

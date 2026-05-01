@@ -28,7 +28,7 @@ type WorkspaceConfig struct {
 	OutputDir string `json:"output_dir"`
 	TmpDir    string `json:"tmp_dir"`
 	// KeylogDir is the optional allowlisted directory for TLS
-	// SSLKEYLOGFILE inputs (M5). When unset, TLS decryption is
+	// SSLKEYLOGFILE inputs. When unset, TLS decryption is
 	// reported as `unavailable` regardless of caller input. When
 	// set, callers may pass tls_keylog_path values that resolve
 	// strictly under this directory.
@@ -60,9 +60,8 @@ type AnalysisConfig struct {
 	TmpDiskBudgetBytes int64 `json:"tmp_disk_budget_bytes"`
 
 	// OutputDiskBudgetBytes caps the on-disk size of derived JSON /
-	// Markdown artifacts written under the configured output dir. The
-	// emission path lands in M2 (#7); M1 plumbs the budget without
-	// writing yet. 0 means use the default (256 MiB).
+	// Markdown artifacts written under the configured output dir. 0
+	// means use the default (256 MiB).
 	OutputDiskBudgetBytes int64 `json:"output_disk_budget_bytes"`
 }
 

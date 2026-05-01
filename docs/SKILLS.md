@@ -71,11 +71,9 @@ ls dist/cute-pcap-mcp-skills-*.zip
 Upload the inner skill ZIPs from that bundle in Claude's Skills
 customization screen.
 
-GitLab CI also publishes each skill ZIP as its own job artifact from
-the `skill-package` matrix jobs, and publishes the all-skills bundle
-from the `skills-bundle` job. Download only the individual skill
-archive you want, or download the bundle when you want all of them at
-once.
+Release assets publish each skill ZIP individually and also publish the
+all-skills bundle. Download only the individual skill archive you want,
+or download the bundle when you want all of them at once.
 
 For Claude Code projects that do not use skills directly, the same
 workflow text can still be referenced from project instructions, but

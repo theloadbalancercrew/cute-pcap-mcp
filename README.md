@@ -36,7 +36,7 @@ Claude and Codex settings to paste.
 
 ### 1. Download The Right File
 
-Open the [Releases page](https://gitlab.thelbc.io/cute-pm/cute-pcap-mcp/-/releases)
+Open the [Releases page](https://github.com/theloadbalancercrew/cute-pcap-mcp/releases)
 and download the newest package for your OS and CPU:
 
 | Machine | Download |
@@ -73,11 +73,11 @@ macOS / Linux shell:
 
 ```sh
 # Change this if you downloaded a different release or platform.
-VERSION="v1.0.0-rc.4"
+VERSION="v1.0.0"
 ARCHIVE="cute-pcap-mcp-darwin-arm64.tar.gz"
 
 WORK="$HOME/mcp-work"
-BASE_URL="https://gitlab.thelbc.io/cute-pm/cute-pcap-mcp/-/releases/$VERSION/downloads"
+BASE_URL="https://github.com/theloadbalancercrew/cute-pcap-mcp/releases/download/$VERSION"
 
 mkdir -p "$WORK"/{bin,downloads,pcaps,output,tmp,keylogs}
 curl -L "$BASE_URL/$ARCHIVE" -o "$WORK/downloads/$ARCHIVE"
@@ -116,11 +116,11 @@ Windows PowerShell:
 
 ```powershell
 # Change this if you downloaded a different release or platform.
-$Version = "v1.0.0-rc.4"
+$Version = "v1.0.0"
 $Archive = "cute-pcap-mcp-windows-amd64.tar.gz"
 
 $Work = Join-Path $HOME "mcp-work"
-$BaseUrl = "https://gitlab.thelbc.io/cute-pm/cute-pcap-mcp/-/releases/$Version/downloads"
+$BaseUrl = "https://github.com/theloadbalancercrew/cute-pcap-mcp/releases/download/$Version"
 
 New-Item -ItemType Directory -Force `
   "$Work\bin", `
@@ -217,7 +217,7 @@ binary or config usually requires a restart.
 ### 4. Install Claude Skills
 
 Download `cute-pcap-mcp-skills-<version>.zip` from the
-[Releases page](https://gitlab.thelbc.io/cute-pm/cute-pcap-mcp/-/releases)
+[Releases page](https://github.com/theloadbalancercrew/cute-pcap-mcp/releases)
 and unzip it. The extracted files are individual skill ZIPs such as
 `pcap-analysis.zip`, `network-triage.zip`, and `capture-planning.zip`.
 
@@ -261,9 +261,9 @@ bundle and then extract each inner skill ZIP under `~/.codex/skills`.
 macOS / Linux:
 
 ```sh
-VERSION="v1.0.0-rc.4"
+VERSION="v1.0.0"
 WORK="$HOME/mcp-work"
-BASE_URL="https://gitlab.thelbc.io/cute-pm/cute-pcap-mcp/-/releases/$VERSION/downloads"
+BASE_URL="https://github.com/theloadbalancercrew/cute-pcap-mcp/releases/download/$VERSION"
 SKILLS_BUNDLE="cute-pcap-mcp-skills-$VERSION.zip"
 
 rm -rf "$WORK/downloads/skills"
@@ -282,9 +282,9 @@ done
 Windows PowerShell:
 
 ```powershell
-$Version = "v1.0.0-rc.4"
+$Version = "v1.0.0"
 $Work = Join-Path $HOME "mcp-work"
-$BaseUrl = "https://gitlab.thelbc.io/cute-pm/cute-pcap-mcp/-/releases/$Version/downloads"
+$BaseUrl = "https://github.com/theloadbalancercrew/cute-pcap-mcp/releases/download/$Version"
 $SkillsBundle = "cute-pcap-mcp-skills-$Version.zip"
 $SkillRoot = Join-Path $HOME ".codex\skills"
 $Downloads = Join-Path $Work "downloads"
@@ -331,7 +331,7 @@ See `docs/ARCHITECTURE.md` for the product boundary and
 See `docs/CONTAINER.md` for the Docker runtime. See `docs/WORKFLOW.md`
 for the operator walkthrough — workspace setup, ArtifactReference
 exchange shape, orchestration flow, and a troubleshooting table. See
-`docs/ROADMAP.md` for the milestone plan and coding order. The
+`docs/ROADMAP.md` for product boundaries and future work. The
 model-facing contract lives in `docs/TOOL_REFERENCE.md` (per-tool
 input/output/error sets) and `docs/PCAP_SERVER_CONTRACT.md` (wire
 shapes, error taxonomy, finding codes, and privacy invariants). The

@@ -25,10 +25,9 @@ when needed:
 docker build --build-arg ZEEK_IMAGE=zeek/zeek:latest -t cute-pcap-mcp:latest .
 ```
 
-CI builds this image on every branch. On default-branch and tag
-pipelines, it also pushes to the GitLab container registry when the
-standard `CI_REGISTRY*` variables are available; otherwise the push step
-is skipped after the local image build and smoke test pass.
+The local development tag is `cute-pcap-mcp:latest`. Release automation
+can also publish `ghcr.io/theloadbalancercrew/cute-pcap-mcp:<tag>` when
+GitHub Container Registry publishing is enabled for the repo.
 
 ## Workspace layout
 
