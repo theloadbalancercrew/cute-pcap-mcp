@@ -28,11 +28,47 @@ cute-pcap-mcp analyzes that local path and returns bounded evidence.
 The MCP client / LLM passes references, never raw pcap bytes.
 ```
 
+## Prerequisites
+
+Native installs need a few packet tools on the same machine that runs
+the server. The release binary itself will start without them, but
+`pcap_analyze` and friends will fail at first use if they are missing.
+
+- `tshark` (and `capinfos`, shipped with Wireshark) — required at
+  runtime for tshark-backed analysis (protocol hierarchy, conversations,
+  packet rows).
+- `zeek` — required for Zeek log parsing (`conn.log`, `dns.log`,
+  `http.log`, `ssl.log`, etc.).
+- Go (toolchain version pinned in [`go.mod`](go.mod), currently
+  `go 1.26`) — only needed if you build from source rather than using a
+  release binary.
+
+macOS one-liner:
+
+```sh
+brew install wireshark zeek
+```
+
+On Linux, install `tshark` and `zeek` from your distribution's packages.
+On Windows, install Wireshark (provides `tshark` / `capinfos`) and Zeek
+and make sure both are on `PATH`. If managing native dependencies is
+annoying, use the Docker image instead — it bundles the packet tools.
+Full Docker setup lives in [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+
 ## Quick Start
 
 This path assumes you have never run an MCP server before. It installs a
 release binary, creates a workspace, writes a config file, then shows the
 Claude and Codex settings to paste.
+
+**Pick your client:**
+
+- Claude Desktop → [Add The Server To Claude Desktop](#3-add-the-server-to-claude-desktop)
+- Claude Code (CLI) → [Add The Server To Claude Code](#3a-add-the-server-to-claude-code)
+- Codex → [Add The Server To Codex](#5-add-the-server-to-codex)
+
+If you cloned the repo instead of downloading a release, see
+[Building from source](#building-from-source) before step 2.
 
 ### 1. Download The Right File
 
@@ -51,16 +87,10 @@ and download the newest package for your OS and CPU:
 Also download `cute-pcap-mcp-skills-<version>.zip` if you want the
 Claude/Codex helper skills. That bundle contains individual skill ZIPs.
 
-Native installs need packet tools on the same machine. On macOS:
-
-```sh
-brew install wireshark zeek
-```
-
-On Windows, native analysis needs `tshark` / `capinfos` from Wireshark
-and Zeek on `PATH`. If that is annoying, use Docker instead; the Docker
-image bundles the packet tools. Full Docker setup lives in
-[`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+If you do not see a release for your platform — or you want the very
+latest `main` — see [Building from source](#building-from-source). The
+packet tools listed in [Prerequisites](#prerequisites) are still
+required either way.
 
 ### 2. Install The Binary And Config
 
@@ -171,7 +201,7 @@ Put packet captures in `~/mcp-work/pcaps`. Generated reports and
 JSON artifacts go under `~/mcp-work/output`; temp files stay under
 `~/mcp-work/tmp`; TLS key logs can go under `~/mcp-work/keylogs`.
 
-### 3. Add The Server To Claude
+### 3. Add The Server To Claude Desktop
 
 Claude Desktop config file locations:
 
@@ -213,6 +243,28 @@ Windows example:
 Replace `you` with your username. Restart Claude after saving this
 config. MCP servers are launched when Claude starts, so changing the
 binary or config usually requires a restart.
+
+### 3a. Add The Server To Claude Code
+
+[Claude Code](https://docs.claude.com/en/docs/claude-code/overview) is
+Anthropic's CLI client. It registers MCP servers with `claude mcp add`
+rather than a JSON config file:
+
+```sh
+claude mcp add cute-pcap-mcp -- /Users/you/mcp-work/bin/cute-pcap-mcp \
+  -c /Users/you/mcp-work/config.yaml
+```
+
+Use absolute paths for both the binary and the config. Replace `you`
+with your username (or the equivalent on Linux / Windows). The `--`
+separates Claude Code's flags from the server's flags.
+
+If `claude` is not found after install, add `~/.local/bin` to your
+`PATH` (per the warning printed by the official `claude.ai/install.sh`
+installer).
+
+For a project-scoped `.mcp.json` config and other Claude Code patterns,
+see [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
 
 ### 4. Install Claude Skills
 
@@ -337,6 +389,33 @@ input/output/error sets) and `docs/PCAP_SERVER_CONTRACT.md` (wire
 shapes, error taxonomy, finding codes, and privacy invariants). The
 CI truth table lives in `docs/PCAP_TESTS_AND_SMOKE.md`. Adjacent
 agent workflow skills live in `skills/`; see `docs/SKILLS.md`.
+
+## Building from source
+
+If you cloned the repo rather than downloading a release, build the
+binary with the Go toolchain. Make sure you have the Go version pinned
+in [`go.mod`](go.mod) (currently `go 1.26`) and the runtime tools listed
+under [Prerequisites](#prerequisites).
+
+```sh
+git clone https://github.com/theloadbalancercrew/cute-pcap-mcp.git
+cd cute-pcap-mcp
+make build
+./bin/cute-pcap-mcp --version
+```
+
+`make build` runs `go build -o bin/cute-pcap-mcp ./cmd/cute-pcap-mcp`
+with version metadata wired through `-ldflags`. The resulting binary
+lands at `./bin/cute-pcap-mcp` (or `bin\cute-pcap-mcp.exe` on Windows).
+If you prefer plain `go build`:
+
+```sh
+go build -o bin/cute-pcap-mcp ./cmd/cute-pcap-mcp
+```
+
+Point your client config (Claude Desktop, Claude Code, or Codex) at the
+absolute path of the built binary, plus `-c /path/to/config.yaml`, the
+same way the release-binary instructions above do.
 
 ## Tools
 
