@@ -283,6 +283,14 @@ func registerTools(server *mcp.Server, state *serverState) {
 		if err != nil {
 			terr := classify(err)
 			logger.InfoContext(ctx, "tool.result", slog.String("tool", "pcap_filter"), slog.String("outcome", "error"), slog.String("error_kind", terr.Kind))
+			// runFilter may attach warnings to the error path
+			// (e.g. no_packets_matched on a truncated source where
+			// a pcap_truncated warning is meaningful evidence the
+			// host needs to see). Preserve those warnings so the
+			// "no matches" verdict carries the truncation caveat.
+			if len(warnings) > 0 {
+				return &mcp.CallToolResult{IsError: true}, filterErrorOutputWithFindings(source, terr, warnings), nil
+			}
 			return &mcp.CallToolResult{IsError: true}, filterErrorOutput(source, terr), nil
 		}
 		logger.InfoContext(ctx, "tool.result", slog.String("tool", "pcap_filter"), slog.String("outcome", "success"), slog.Int64("packet_count", packetCount))

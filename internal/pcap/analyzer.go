@@ -804,10 +804,13 @@ func runZeekReport(parent context.Context, path string, cfg config.Config, maxRe
 	// the subprocess returned an error. Detect that case via the
 	// known stderr phrase and continue into the log-parsing path
 	// with a `truncated` flag set; only return the error for
-	// non-truncated failures (binary missing, real crash, etc.).
+	// non-truncated failures (binary missing, timeout, real
+	// crash). Restricting tolerance to errAnalyzerFailed keeps
+	// analyzer_timeout / analyzer_unavailable typed even when
+	// stderr happens to contain a truncation phrase.
 	truncated := false
 	if runErr != nil {
-		if isTruncatedPCAPDiagnostic(out.Stderr) {
+		if errors.Is(runErr, errAnalyzerFailed) && isTruncatedPCAPDiagnostic(out.Stderr) {
 			truncated = true
 		} else {
 			return ZeekReport{}, false, runErr
@@ -1122,9 +1125,15 @@ func runAnalyzerCommandWithEnv(parent context.Context, timeout time.Duration, ma
 // the partial stdout. Other failures (analyzer_unavailable,
 // analyzer_timeout, unrecognized analyzer_failed) propagate via
 // `err` exactly like runAnalyzerCommand. See issue #2.
+//
+// The tolerance is intentionally narrowed to errAnalyzerFailed so a
+// timeout or analyzer-unavailable error whose stderr happens to
+// contain a truncation phrase keeps its typed error kind. The
+// truncation salvage path is for "tshark/Zeek read partial input
+// then exited non-zero," not "tshark hit the call timeout."
 func runAnalyzerCommandTolerant(parent context.Context, timeout time.Duration, maxBytes int, name string, args []string, dir string) (analyzerCommandOutput, bool, error) {
 	out, err := runAnalyzerCommand(parent, timeout, maxBytes, name, args, dir)
-	if err != nil && isTruncatedPCAPDiagnostic(out.Stderr) {
+	if err != nil && errors.Is(err, errAnalyzerFailed) && isTruncatedPCAPDiagnostic(out.Stderr) {
 		return out, true, nil
 	}
 	return out, false, err

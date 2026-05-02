@@ -286,6 +286,108 @@ func TestAnalyzeArtifactSalvagesPartialEvidenceOnTruncatedPCAP(t *testing.T) {
 	}
 }
 
+// TestRunAnalyzerCommandTolerantPreservesTimeouts pins the
+// review-fix narrowing: the tolerant wrapper must NOT swallow a
+// timeout (or analyzer-unavailable) error even when the captured
+// stderr contains a truncation phrase. The truncation salvage path
+// is for "analyzer read partial input then exited non-zero," not
+// "analyzer was killed by the timeout watchdog."
+func TestRunAnalyzerCommandTolerantPreservesTimeouts(t *testing.T) {
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no /bin/sh on PATH")
+	}
+	cfg, err := config.Normalize(config.Config{
+		AllowedArtifactDirs: []string{t.TempDir()},
+		Analysis: config.AnalysisConfig{
+			// Smallest legal timeout so the watchdog fires fast.
+			CommandTimeoutSeconds: 1,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sleep past the timeout while emitting a truncation phrase to
+	// stderr. Without the errAnalyzerFailed restriction, the
+	// tolerant wrapper would swallow this as truncated=true and
+	// hide the timeout from the caller.
+	out, truncated, runErr := runAnalyzerCommandTolerant(t.Context(), cfg.Timeout(), 64*1024, "sh", []string{
+		"-c",
+		`echo 'appears to have been cut short in the middle of a packet' 1>&2; sleep 5`,
+	}, "")
+	_ = out
+	if truncated {
+		t.Fatalf("tolerant wrapper swallowed a timeout as truncation; runErr=%v", runErr)
+	}
+	if !errors.Is(runErr, errAnalyzerTimeout) {
+		t.Fatalf("err = %v, want errAnalyzerTimeout", runErr)
+	}
+}
+
+// TestRunFilterTruncatedZeroMatchKeepsWarning pins the review-fix
+// for the "no matches in the readable prefix" case. When tshark
+// reports a truncation but the filter matches zero packets in the
+// readable prefix, the partial verdict needs to be returned with
+// the pcap_truncated warning still attached — otherwise a host
+// would see a clean no_packets_matched and over-trust it.
+func TestRunFilterTruncatedZeroMatchKeepsWarning(t *testing.T) {
+	requireCommand(t, "tshark")
+
+	root := t.TempDir()
+	pcapDir := filepath.Join(root, "pcaps")
+	outputDir := filepath.Join(root, "output")
+	if err := os.MkdirAll(pcapDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pcap := filepath.Join(pcapDir, "truncated.pcap")
+	// Two packets, second truncated. Both are TCP/80; using a UDP
+	// filter forces zero matches in the readable prefix while
+	// still triggering the truncation diagnostic on packet 2.
+	if err := os.WriteFile(pcap, twoPacketTruncatedPcap(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Normalize(config.Config{
+		AllowedArtifactDirs: []string{pcapDir},
+		Workspace:           config.WorkspaceConfig{OutputDir: outputDir},
+		Analysis: config.AnalysisConfig{
+			CommandTimeoutSeconds: 10,
+			MaxStdoutBytes:        200000,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := inspectArtifact(pcap, cfg, artifactExpectations{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, warnings, err := runFilter(t.Context(), source, cfg, "udp")
+	if err == nil {
+		t.Fatal("expected no_packets_matched error, got nil")
+	}
+	if !errors.Is(err, errNoPacketsMatched) {
+		t.Fatalf("err = %v, want errNoPacketsMatched", err)
+	}
+	// Both fixes meet here: the warnings slice must contain the
+	// pcap_truncated finding, and the message must clarify that
+	// "no matches" only covers the readable prefix.
+	if len(warnings) == 0 {
+		t.Fatal("warnings dropped on zero-match-truncation path; the pcap_truncated signal must survive the error")
+	}
+	var sawTruncation bool
+	for _, w := range warnings {
+		if w.Code == FindingPCAPTruncated {
+			sawTruncation = true
+		}
+	}
+	if !sawTruncation {
+		t.Fatalf("warnings missing pcap_truncated; got %#v", warnings)
+	}
+	if !strings.Contains(err.Error(), "readable prefix") {
+		t.Fatalf("error message does not clarify readable-prefix scope: %v", err)
+	}
+}
+
 // TestRunAnalyzerCommandReturnsCapturedOutputOnError pins the runner
 // boundary fix: errors no longer wipe the captured stdout/stderr.
 // The previous implementation returned an empty analyzerCommandOutput

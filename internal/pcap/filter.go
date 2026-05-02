@@ -2,6 +2,7 @@ package pcap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,6 +42,21 @@ func filterErrorOutput(source ArtifactInfo, terr toolError) filterOutput {
 	return filterOutput{
 		SchemaVersion: SchemaVersion,
 		Source:        source,
+		Error:         &terr,
+	}
+}
+
+// filterErrorOutputWithFindings is filterErrorOutput plus a list of
+// warning findings that must survive even on the error path. The
+// no_packets_matched-on-truncated-source case uses this so
+// `pcap_truncated` warnings are not silently dropped by the error
+// handler — without them a host would see "no matches" without
+// knowing the verdict only covers the readable prefix.
+func filterErrorOutputWithFindings(source ArtifactInfo, terr toolError, findings []PacketFinding) filterOutput {
+	return filterOutput{
+		SchemaVersion: SchemaVersion,
+		Source:        source,
+		Findings:      findings,
 		Error:         &terr,
 	}
 }
@@ -119,7 +135,11 @@ func runFilter(ctx context.Context, source ArtifactInfo, cfg config.Config, disp
 		// truncation. Preserve the artifact and surface a typed
 		// pcap_truncated warning rather than discarding the partial
 		// output as analyzer_failed.
-		if isTruncatedPCAPDiagnostic(out.Stderr) {
+		//
+		// Restrict tolerance to errAnalyzerFailed so a timeout or
+		// analyzer-unavailable error keeps its typed kind even if
+		// stderr happens to contain a truncation phrase.
+		if errors.Is(err, errAnalyzerFailed) && isTruncatedPCAPDiagnostic(out.Stderr) {
 			warnings = append(warnings, truncationFinding("tshark", out.Stderr))
 		} else {
 			return nil, 0, nil, err
@@ -173,6 +193,17 @@ func runFilter(ctx context.Context, source ArtifactInfo, cfg config.Config, disp
 		// workspace is not littered with header-only files.
 		_ = os.Remove(outPath)
 		_ = os.Remove(dir)
+		// When the source pcap was truncated, "no matches" is only
+		// known for the readable prefix — matches after the
+		// truncation point are unobservable. Surface the
+		// pcap_truncated warning(s) the caller already collected
+		// and clarify the message so orchestration does not over-
+		// trust a "no match" verdict on a partial input.
+		if len(warnings) > 0 {
+			return nil, 0, warnings, fmt.Errorf(
+				"%w: display filter %q produced zero packets in the readable prefix; matches after the truncation point are unknown",
+				errNoPacketsMatched, displayFilter)
+		}
 		return nil, 0, nil, fmt.Errorf("%w: display filter %q produced zero packets", errNoPacketsMatched, displayFilter)
 	}
 
