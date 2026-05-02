@@ -312,7 +312,13 @@ func resolveZeekUID(ctx context.Context, source ArtifactInfo, cfg config.Config,
 	// looking up is fixed at capture time and doesn't depend on
 	// TLS decryption. Decryption (when the caller requested it)
 	// happens on the second Zeek pass inside analyzeArtifact.
-	report, err := runZeekReport(ctx, source.Path, cfg, cfg.Analysis.MaxZeekRecordsPerLog, "")
+	// resolveZeekUID tolerates a truncated source pcap the same way
+	// the analyze pipeline does: Zeek writes conn.log up to the
+	// truncation point, so the UID lookup can still succeed on the
+	// readable prefix. The truncation flag is dropped here because
+	// the caller will rerun analyzeArtifact (which surfaces the
+	// pcap_truncated finding for the user-facing call).
+	report, _, err := runZeekReport(ctx, source.Path, cfg, cfg.Analysis.MaxZeekRecordsPerLog, "")
 	if err != nil {
 		return nil, err
 	}

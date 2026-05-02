@@ -63,7 +63,7 @@ func TestRunFilterRejectsMissingOutputDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runFilter(t.Context(), ArtifactInfo{Path: "/nope.pcap", SHA256: "deadbeef"}, cfg, "tcp")
+	_, _, _, err = runFilter(t.Context(), ArtifactInfo{Path: "/nope.pcap", SHA256: "deadbeef"}, cfg, "tcp")
 	if err == nil {
 		t.Fatal("runFilter succeeded without output_dir, want error")
 	}
@@ -106,7 +106,7 @@ func TestRunFilterIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	artifact, count, err := runFilter(t.Context(), source, cfg, "tcp.port == 80")
+	artifact, count, _, err := runFilter(t.Context(), source, cfg, "tcp.port == 80")
 	if err != nil {
 		t.Fatalf("runFilter: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestRunFilterEmitsNoPacketsMatchedOnEmptyResult(t *testing.T) {
 
 	// The synthetic pcap has only a single TCP packet. A UDP filter
 	// matches zero packets.
-	_, _, err = runFilter(t.Context(), source, cfg, "udp")
+	_, _, _, err = runFilter(t.Context(), source, cfg, "udp")
 	if !errors.Is(err, errNoPacketsMatched) {
 		t.Fatalf("err = %v, want errNoPacketsMatched", err)
 	}
@@ -300,7 +300,7 @@ func TestRunFilterIntegrationProducesLegacyPCAPFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifact, _, err := runFilter(t.Context(), source, cfg, "tcp.port == 80")
+	artifact, _, _, err := runFilter(t.Context(), source, cfg, "tcp.port == 80")
 	if err != nil {
 		t.Fatalf("runFilter: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestRunFilterEnforcesOutputDiskBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runFilter(t.Context(), source, cfg, "tcp.port == 80")
+	_, _, _, err = runFilter(t.Context(), source, cfg, "tcp.port == 80")
 	if err == nil {
 		t.Fatal("runFilter succeeded over budget, want output_limit_reached")
 	}

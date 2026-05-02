@@ -194,6 +194,12 @@ Tool errors:
   returned, and the error lands in `errors[]`.
 - `analyzer_unavailable`, `analyzer_failed`, `analyzer_timeout` —
   emitted per-analyzer in `errors[]`, not as a top-level error.
+  **Recognized truncated-pcap diagnostics do NOT classify as
+  `analyzer_failed`.** A capinfos / tshark / Zeek run that hits
+  the truncation phrase still produces partial evidence (capture
+  metadata, packet rows, log files); the response keeps that
+  evidence and adds a `pcap_truncated` warning to `findings`
+  instead of a failed-analyzer error.
 
 #### `analysis_profile=f5_ltm_tls_debug`
 
@@ -285,7 +291,12 @@ Success output:
   it lists the count when known, and explicitly says "exact packet
   count unavailable" when capinfos was missing.
 - `display_filter`: the filter that was applied.
-- `findings`: includes `filtered_pcap_written`.
+- `findings`: includes `filtered_pcap_written`. When the source
+  pcap was cut short mid-record but tshark still wrote a readable
+  derived pcap, also includes a `pcap_truncated` warning finding
+  alongside the success path. The artifact is preserved in this
+  case — every packet tshark read before the truncation point
+  lands in `filtered.pcap`.
 
 Tool errors:
 
@@ -303,9 +314,23 @@ Tool errors:
   removed before the error returns.
 - `no_packets_matched` — the display filter matched zero packets.
   The empty derived pcap is removed before the error returns. Carries
-  `field: display_filter`.
+  `field: display_filter`. **Truncated-source caveat:** when the
+  source pcap was cut short mid-record, the verdict only covers the
+  readable prefix — matches after the truncation point are
+  unobservable. In that case the response includes a
+  `pcap_truncated` finding in `findings[]` even on the error path,
+  and the error message reads "produced zero packets in the readable
+  prefix; matches after the truncation point are unknown" so
+  orchestration cannot over-trust the no-match verdict. The empty
+  derived pcap is still removed.
 - `analyzer_unavailable` / `analyzer_failed` / `analyzer_timeout` —
-  tshark was missing, exited non-zero, or hit the call timeout.
+  tshark was missing, exited non-zero on a non-recoverable error,
+  or hit the call timeout. **Recognized truncated-pcap diagnostics
+  do NOT classify as `analyzer_failed`** — on the success path they
+  preserve the partial derived artifact and surface a
+  `pcap_truncated` warning finding; on the no-match path described
+  above they survive as a warning alongside the typed
+  `no_packets_matched` error.
 - `analyzer_failed` from `workspace.output_dir` not being configured;
   `pcap_filter` requires an output workspace.
 

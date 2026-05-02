@@ -246,11 +246,31 @@ func analyzeArtifact(ctx context.Context, artifact ArtifactInfo, cfg config.Conf
 	keylogResolved, keylogStatus, keylogDetail := resolveTLSKeylog(input.TLSKeylogPath, cfg)
 	keylogActive := keylogStatus == TLSDecryptionStatusAttempted
 
+	// truncationWarnings collects pcap_truncated findings from any
+	// analyzer that produced partial evidence on a cut-short input.
+	// They are merged into out.Findings after buildFindings runs so
+	// they survive the slice replacement (same pattern as the M4
+	// profile-finding merge).
+	var truncationWarnings []PacketFinding
+
 	if includeCapinfos(input) {
-		if capinfos, err := runCapinfos(ctx, artifact.Path, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes); err != nil {
+		capinfosStdout, capinfosTruncated, capinfosStderr, err := runCapinfos(ctx, artifact.Path, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes)
+		switch {
+		case err != nil:
 			out.Errors = append(out.Errors, classify(err))
-		} else if summary := parseCapinfos(capinfos); summary != nil {
-			out.CaptureSummary = summary
+		case capinfosTruncated:
+			// capinfos managed to print partial capture metadata before
+			// bailing on the truncation. Parse what we have and surface
+			// a typed warning so the host knows the source pcap was
+			// cut short.
+			if summary := parseCapinfos(capinfosStdout); summary != nil {
+				out.CaptureSummary = summary
+			}
+			truncationWarnings = append(truncationWarnings, truncationFinding("capinfos", capinfosStderr))
+		default:
+			if summary := parseCapinfos(capinfosStdout); summary != nil {
+				out.CaptureSummary = summary
+			}
 		}
 	}
 
@@ -266,7 +286,7 @@ func analyzeArtifact(ctx context.Context, artifact ArtifactInfo, cfg config.Conf
 	keylogAnalyzerFailed := false
 
 	if includeTShark(input) {
-		tshark, err := runTSharkReport(ctx, artifact.Path, cfg, packetRowLimit(cfg, input), strings.TrimSpace(input.DisplayFilter), keylogForAnalyzers)
+		tshark, tsharkTruncated, err := runTSharkReport(ctx, artifact.Path, cfg, packetRowLimit(cfg, input), strings.TrimSpace(input.DisplayFilter), keylogForAnalyzers)
 		if err != nil {
 			out.Errors = append(out.Errors, classify(err))
 			if keylogActive {
@@ -296,11 +316,14 @@ func analyzeArtifact(ctx context.Context, artifact ArtifactInfo, cfg config.Conf
 				keylogAnalyzerFailed = true
 			}
 		}
+		if tsharkTruncated {
+			truncationWarnings = append(truncationWarnings, truncationFinding("tshark", "input pcap appears to have been cut short in the middle of a packet"))
+		}
 	}
 
 	var zeekSummary *AnalysisSummary
 	if includeZeek(input) {
-		zeek, err := runZeekReport(ctx, artifact.Path, cfg, zeekRecordLimit(cfg, input), keylogForAnalyzers)
+		zeek, zeekTruncated, err := runZeekReport(ctx, artifact.Path, cfg, zeekRecordLimit(cfg, input), keylogForAnalyzers)
 		if err != nil {
 			out.Errors = append(out.Errors, classify(err))
 			if keylogActive {
@@ -321,6 +344,9 @@ func analyzeArtifact(ctx context.Context, artifact ArtifactInfo, cfg config.Conf
 			}
 			if zeek.Warnings != "" {
 				out.Metadata["zeek_warnings"] = zeek.Warnings
+			}
+			if zeekTruncated {
+				truncationWarnings = append(truncationWarnings, truncationFinding("zeek", zeek.Warnings))
 			}
 		}
 	}
@@ -348,6 +374,22 @@ func analyzeArtifact(ctx context.Context, artifact ArtifactInfo, cfg config.Conf
 	out.Findings = append(out.Findings, profileFindings...)
 	if out.Profile != nil {
 		out.Findings = append(out.Findings, out.Profile.Findings...)
+	}
+	// Truncation warnings are merged after profile findings (same
+	// rationale: buildFindings replaces the slice). Multiple
+	// analyzers can detect the same truncation; we only emit the
+	// first finding per analyzer because the message is bounded
+	// and a host scanning findings.code on pcap_truncated already
+	// has the signal it needs.
+	if len(truncationWarnings) > 0 {
+		seen := map[string]bool{}
+		for _, w := range truncationWarnings {
+			if seen[w.Message] {
+				continue
+			}
+			seen[w.Message] = true
+			out.Findings = append(out.Findings, w)
+		}
 	}
 
 	// Stamp the TLS decryption status. Even when the caller did not
@@ -566,15 +608,19 @@ func tsharkSectionsAvailable(out analyzeOutput) []string {
 	return sections
 }
 
-func runCapinfos(parent context.Context, path string, timeout time.Duration, maxBytes int) (string, error) {
-	out, err := runAnalyzerCommand(parent, timeout, maxBytes, "capinfos", []string{path}, "")
-	if err != nil {
-		return "", err
-	}
-	return out.Stdout, nil
+// runCapinfos returns capinfos's human-readable text. The third
+// return is a `truncated` flag that is true when capinfos exited
+// non-zero with a recognized truncated-pcap diagnostic; in that
+// case the stdout is the partial output capinfos managed to print
+// before bailing (capture metadata is generally complete; only the
+// final truncated packet is missing). Callers should still parse
+// the partial stdout and emit a pcap_truncated finding.
+func runCapinfos(parent context.Context, path string, timeout time.Duration, maxBytes int) (string, bool, string, error) {
+	out, truncated, err := runAnalyzerCommandTolerant(parent, timeout, maxBytes, "capinfos", []string{path}, "")
+	return out.Stdout, truncated, out.Stderr, err
 }
 
-func runTSharkReport(parent context.Context, path string, cfg config.Config, maxPacketRows int, displayFilter string, keylogPath string) (TSharkReport, error) {
+func runTSharkReport(parent context.Context, path string, cfg config.Config, maxPacketRows int, displayFilter string, keylogPath string) (TSharkReport, bool, error) {
 	report := TSharkReport{
 		Conversations: map[string]string{},
 		Metadata: map[string]string{
@@ -586,25 +632,36 @@ func runTSharkReport(parent context.Context, path string, cfg config.Config, max
 		report.Metadata["display_filter_scope"] = "packet_rows"
 	}
 	keylogArgs := keylogTSharkArgs(keylogPath)
+	// truncated tracks whether ANY tshark sub-call detected a
+	// truncated-pcap diagnostic. The caller surfaces this as a
+	// single pcap_truncated finding regardless of how many sub-
+	// calls saw it.
+	truncated := false
 
-	protocolHierarchy, err := runTShark(parent, path, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes, keylogArgs)
+	protocolHierarchy, hierarchyTruncated, err := runTShark(parent, path, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes, keylogArgs)
 	if err != nil {
-		return TSharkReport{}, err
+		return TSharkReport{}, false, err
 	}
 	report.ProtocolHierarchy = protocolHierarchy
+	if hierarchyTruncated {
+		truncated = true
+	}
 
 	for _, convType := range []string{"eth", "ip", "tcp", "udp"} {
 		args := []string{"-n", "-r", path, "-q", "-z", "conv," + convType}
 		args = append(keylogArgs, args...)
-		out, err := runAnalyzerCommand(parent, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes, "tshark", args, "")
+		out, convTruncated, err := runAnalyzerCommandTolerant(parent, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes, "tshark", args, "")
 		if err != nil {
 			report.Errors = append(report.Errors, classify(err))
 			continue
 		}
+		if convTruncated {
+			truncated = true
+		}
 		report.Conversations[convType] = out.Stdout
 	}
 
-	packets, err := runTSharkPacketSummaries(parent, path, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes, maxPacketRows, displayFilter, keylogArgs)
+	packets, packetsTruncated, err := runTSharkPacketSummaries(parent, path, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes, maxPacketRows, displayFilter, keylogArgs)
 	if err != nil {
 		// invalid_filter is caller-supplied input that we cannot
 		// honor. Bubble it up so it lands in the top-level
@@ -613,16 +670,19 @@ func runTSharkReport(parent context.Context, path string, cfg config.Config, max
 		// per-section partial errors.
 		if errors.Is(err, errInvalidFilter) {
 			report.Errors = append(report.Errors, classify(err))
-			return report, err
+			return report, truncated, err
 		}
 		report.Errors = append(report.Errors, classify(err))
 	} else {
 		report.Packets = packets
+		if packetsTruncated {
+			truncated = true
+		}
 	}
-	return report, nil
+	return report, truncated, nil
 }
 
-func runTSharkPacketSummaries(parent context.Context, path string, timeout time.Duration, maxBytes, maxRows int, displayFilter string, keylogArgs []string) ([]TSharkPacketSummary, error) {
+func runTSharkPacketSummaries(parent context.Context, path string, timeout time.Duration, maxBytes, maxRows int, displayFilter string, keylogArgs []string) ([]TSharkPacketSummary, bool, error) {
 	args := []string{
 		"-n",
 		"-r", path,
@@ -649,14 +709,18 @@ func runTSharkPacketSummaries(parent context.Context, path string, timeout time.
 		args = append([]string{"-Y", displayFilter}, args...)
 	}
 	args = append(keylogArgs, args...)
-	out, err := runAnalyzerCommand(parent, timeout, maxBytes, "tshark", args, "")
+	out, truncated, err := runAnalyzerCommandTolerant(parent, timeout, maxBytes, "tshark", args, "")
 	if err != nil {
 		if displayFilter != "" && isTSharkFilterError(err) {
-			return nil, invalidFilterError(strings.TrimPrefix(err.Error(), errAnalyzerFailed.Error()+": "))
+			return nil, false, invalidFilterError(strings.TrimPrefix(err.Error(), errAnalyzerFailed.Error()+": "))
 		}
-		return nil, err
+		return nil, false, err
 	}
-	return parseTSharkPacketSummaries(out.Stdout)
+	parsed, parseErr := parseTSharkPacketSummaries(out.Stdout)
+	if parseErr != nil {
+		return nil, false, parseErr
+	}
+	return parsed, truncated, nil
 }
 
 // isTSharkFilterError checks whether an analyzer_failed error from
@@ -709,16 +773,16 @@ func parseTSharkPacketSummaries(raw string) ([]TSharkPacketSummary, error) {
 	return packets, nil
 }
 
-func runZeekReport(parent context.Context, path string, cfg config.Config, maxRecordsPerLog int, keylogPath string) (ZeekReport, error) {
+func runZeekReport(parent context.Context, path string, cfg config.Config, maxRecordsPerLog int, keylogPath string) (ZeekReport, bool, error) {
 	tmpRoot := cfg.Workspace.TmpDir
 	if tmpRoot != "" {
 		if err := os.MkdirAll(tmpRoot, 0o700); err != nil {
-			return ZeekReport{}, fmt.Errorf("%w: prepare workspace.tmp_dir: %v", errAnalyzerFailed, err)
+			return ZeekReport{}, false, fmt.Errorf("%w: prepare workspace.tmp_dir: %v", errAnalyzerFailed, err)
 		}
 	}
 	workdir, err := os.MkdirTemp(tmpRoot, "cute-pcap-mcp-zeek-*")
 	if err != nil {
-		return ZeekReport{}, err
+		return ZeekReport{}, false, err
 	}
 	defer os.RemoveAll(workdir)
 
@@ -730,21 +794,36 @@ func runZeekReport(parent context.Context, path string, cfg config.Config, maxRe
 		// analyzer invocation.
 		zeekEnv = []string{"SSLKEYLOGFILE=" + keylogPath}
 	}
-	out, err := runAnalyzerCommandWithEnv(parent, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes, "zeek", []string{
+	out, runErr := runAnalyzerCommandWithEnv(parent, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes, "zeek", []string{
 		"-C",
 		"-r", path,
 	}, workdir, zeekEnv)
-	if err != nil {
-		return ZeekReport{}, err
+	// On a truncated input, Zeek exits non-zero AFTER writing
+	// per-protocol .log files for the readable prefix of the
+	// capture. The workdir is therefore still useful even though
+	// the subprocess returned an error. Detect that case via the
+	// known stderr phrase and continue into the log-parsing path
+	// with a `truncated` flag set; only return the error for
+	// non-truncated failures (binary missing, timeout, real
+	// crash). Restricting tolerance to errAnalyzerFailed keeps
+	// analyzer_timeout / analyzer_unavailable typed even when
+	// stderr happens to contain a truncation phrase.
+	truncated := false
+	if runErr != nil {
+		if errors.Is(runErr, errAnalyzerFailed) && isTruncatedPCAPDiagnostic(out.Stderr) {
+			truncated = true
+		} else {
+			return ZeekReport{}, false, runErr
+		}
 	}
 
 	if budget := cfg.Analysis.TmpDiskBudgetBytes; budget > 0 {
 		used, walkErr := dirSizeBytes(workdir)
 		if walkErr != nil {
-			return ZeekReport{}, fmt.Errorf("%w: measure tmp_dir use: %v", errAnalyzerFailed, walkErr)
+			return ZeekReport{}, false, fmt.Errorf("%w: measure tmp_dir use: %v", errAnalyzerFailed, walkErr)
 		}
 		if used > budget {
-			return ZeekReport{}, fmt.Errorf("%w: zeek wrote %d bytes; exceeds analysis.tmp_disk_budget_bytes (%d)",
+			return ZeekReport{}, false, fmt.Errorf("%w: zeek wrote %d bytes; exceeds analysis.tmp_disk_budget_bytes (%d)",
 				errTmpBudgetExceeded, used, budget)
 		}
 	}
@@ -758,17 +837,17 @@ func runZeekReport(parent context.Context, path string, cfg config.Config, maxRe
 
 	matches, err := filepath.Glob(filepath.Join(workdir, "*.log"))
 	if err != nil {
-		return ZeekReport{}, err
+		return ZeekReport{}, false, err
 	}
 	sort.Strings(matches)
 	for _, logPath := range matches {
 		log, err := parseZeekLog(logPath, maxRecordsPerLog)
 		if err != nil {
-			return ZeekReport{}, fmt.Errorf("%w: parse %s: %v", errAnalyzerFailed, filepath.Base(logPath), err)
+			return ZeekReport{}, false, fmt.Errorf("%w: parse %s: %v", errAnalyzerFailed, filepath.Base(logPath), err)
 		}
 		report.Logs = append(report.Logs, log)
 	}
-	return report, nil
+	return report, truncated, nil
 }
 
 // dirSizeBytes sums the regular-file sizes under root. Used to enforce
@@ -1005,6 +1084,13 @@ func runAnalyzerCommand(parent context.Context, timeout time.Duration, maxBytes 
 // inherited env. Used by runZeekReport to set SSLKEYLOGFILE for
 // TLS decryption without leaking the keylog path into the parent
 // process's env.
+//
+// On non-zero exit (including timeouts) the function still returns
+// the captured stdout/stderr alongside the error. Earlier versions
+// returned an empty analyzerCommandOutput on failure, which threw
+// away salvageable partial evidence (see issue #2: truncated pcaps
+// that still produced 99% of useful capinfos / tshark / Zeek
+// output were classified as analyzer_failed and discarded).
 func runAnalyzerCommandWithEnv(parent context.Context, timeout time.Duration, maxBytes int, name string, args []string, dir string, extraEnv []string) (analyzerCommandOutput, error) {
 	if _, err := exec.LookPath(name); err != nil {
 		return analyzerCommandOutput{}, fmt.Errorf("%w: %s is not available on PATH", errAnalyzerUnavailable, name)
@@ -1021,13 +1107,92 @@ func runAnalyzerCommandWithEnv(parent context.Context, timeout time.Duration, ma
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &limitedBuffer{Buffer: &stdout, Limit: maxBytes}
 	cmd.Stderr = &limitedBuffer{Buffer: &stderr, Limit: 64 * 1024}
-	if err := cmd.Run(); err != nil {
+	runErr := cmd.Run()
+	captured := analyzerCommandOutput{Stdout: stdout.String(), Stderr: stderr.String()}
+	if runErr != nil {
 		if ctx.Err() != nil {
-			return analyzerCommandOutput{}, fmt.Errorf("%w: %s timed out after %s", errAnalyzerTimeout, name, timeout)
+			return captured, fmt.Errorf("%w: %s timed out after %s", errAnalyzerTimeout, name, timeout)
 		}
-		return analyzerCommandOutput{}, fmt.Errorf("%w: %s failed: %s", errAnalyzerFailed, name, strings.TrimSpace(stderr.String()))
+		return captured, fmt.Errorf("%w: %s failed: %s", errAnalyzerFailed, name, strings.TrimSpace(stderr.String()))
 	}
-	return analyzerCommandOutput{Stdout: stdout.String(), Stderr: stderr.String()}, nil
+	return captured, nil
+}
+
+// runAnalyzerCommandTolerant runs the command and treats a known
+// truncated-PCAP diagnostic as a non-fatal warning. It returns the
+// captured stdout/stderr plus a `truncated` flag; callers branch
+// on `truncated` to emit a pcap_truncated finding while still using
+// the partial stdout. Other failures (analyzer_unavailable,
+// analyzer_timeout, unrecognized analyzer_failed) propagate via
+// `err` exactly like runAnalyzerCommand. See issue #2.
+//
+// The tolerance is intentionally narrowed to errAnalyzerFailed so a
+// timeout or analyzer-unavailable error whose stderr happens to
+// contain a truncation phrase keeps its typed error kind. The
+// truncation salvage path is for "tshark/Zeek read partial input
+// then exited non-zero," not "tshark hit the call timeout."
+func runAnalyzerCommandTolerant(parent context.Context, timeout time.Duration, maxBytes int, name string, args []string, dir string) (analyzerCommandOutput, bool, error) {
+	out, err := runAnalyzerCommand(parent, timeout, maxBytes, name, args, dir)
+	if err != nil && errors.Is(err, errAnalyzerFailed) && isTruncatedPCAPDiagnostic(out.Stderr) {
+		return out, true, nil
+	}
+	return out, false, err
+}
+
+// isTruncatedPCAPDiagnostic recognizes analyzer stderr that indicates
+// the input pcap is cut short mid-record. The analyzer typically
+// still wrote useful partial output before bailing — capinfos
+// prints capture metadata and reads packets up to the truncation
+// point, tshark emits packet rows up to the cut, and Zeek writes
+// per-protocol .log files for the readable prefix. Callers branch
+// on this so the partial evidence survives instead of being
+// discarded as analyzer_failed.
+//
+// Known phrases (case-insensitive substring match):
+//   - tshark / capinfos: "appears to have been cut short in the
+//     middle of a packet"
+//   - Zeek: "truncated dump file"
+//   - Zeek (older builds): "failed to read a packet ... only got"
+//
+// New phrases land here in the same MR that adds a test pinning
+// them; this list is the canonical truncation surface the rest of
+// the analyze pipeline trusts.
+func isTruncatedPCAPDiagnostic(text string) bool {
+	if text == "" {
+		return false
+	}
+	lc := strings.ToLower(text)
+	if strings.Contains(lc, "appears to have been cut short in the middle of a packet") {
+		return true
+	}
+	if strings.Contains(lc, "truncated dump file") {
+		return true
+	}
+	if strings.Contains(lc, "failed to read a packet") && strings.Contains(lc, "only got") {
+		return true
+	}
+	return false
+}
+
+// truncationFinding builds the standard pcap_truncated warning. The
+// `analyzer` argument names the binary that reported the truncation
+// (capinfos / tshark / zeek) so a host scanning findings can tell
+// which sub-analyzer was affected. The stderr fragment is bounded
+// to 240 chars so a runaway diagnostic cannot inflate the response.
+func truncationFinding(analyzer, stderrText string) PacketFinding {
+	excerpt := strings.TrimSpace(stderrText)
+	if len(excerpt) > 240 {
+		excerpt = excerpt[:240] + "...[truncated]"
+	}
+	msg := analyzer + " reported a truncated pcap; partial evidence was preserved."
+	if excerpt != "" {
+		msg = msg + " Diagnostic: " + excerpt
+	}
+	return PacketFinding{
+		Code:     FindingPCAPTruncated,
+		Severity: "warning",
+		Message:  msg,
+	}
 }
 
 func firstNonEmpty(values ...string) string {

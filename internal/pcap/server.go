@@ -279,10 +279,18 @@ func registerTools(server *mcp.Server, state *serverState) {
 		}
 		defer state.releaseAnalyzerSlot()
 
-		artifact, packetCount, err := runFilter(ctx, source, cfg, strings.TrimSpace(input.DisplayFilter))
+		artifact, packetCount, warnings, err := runFilter(ctx, source, cfg, strings.TrimSpace(input.DisplayFilter))
 		if err != nil {
 			terr := classify(err)
 			logger.InfoContext(ctx, "tool.result", slog.String("tool", "pcap_filter"), slog.String("outcome", "error"), slog.String("error_kind", terr.Kind))
+			// runFilter may attach warnings to the error path
+			// (e.g. no_packets_matched on a truncated source where
+			// a pcap_truncated warning is meaningful evidence the
+			// host needs to see). Preserve those warnings so the
+			// "no matches" verdict carries the truncation caveat.
+			if len(warnings) > 0 {
+				return &mcp.CallToolResult{IsError: true}, filterErrorOutputWithFindings(source, terr, warnings), nil
+			}
 			return &mcp.CallToolResult{IsError: true}, filterErrorOutput(source, terr), nil
 		}
 		logger.InfoContext(ctx, "tool.result", slog.String("tool", "pcap_filter"), slog.String("outcome", "success"), slog.Int64("packet_count", packetCount))
@@ -298,17 +306,24 @@ func registerTools(server *mcp.Server, state *serverState) {
 		} else {
 			message = "Wrote filtered pcap matching the display filter; exact packet count unavailable (capinfos missing or unparseable)."
 		}
+		findings := []PacketFinding{{
+			Code:     FindingFilteredPCAPWritten,
+			Severity: "info",
+			Message:  message,
+		}}
+		// Truncation warnings from runFilter (issue #2): tshark
+		// reported a truncated source pcap but still wrote the
+		// readable prefix into the derived artifact. Surface as
+		// findings alongside the success path; the artifact is
+		// genuine, just bounded by the source's truncation.
+		findings = append(findings, warnings...)
 		return nil, filterOutput{
 			SchemaVersion: SchemaVersion,
 			Source:        source,
 			Artifact:      artifact,
 			PacketCount:   packetCount,
 			DisplayFilter: strings.TrimSpace(input.DisplayFilter),
-			Findings: []PacketFinding{{
-				Code:     FindingFilteredPCAPWritten,
-				Severity: "info",
-				Message:  message,
-			}},
+			Findings:      findings,
 		}, nil
 	})
 
@@ -414,22 +429,26 @@ func registerTools(server *mcp.Server, state *serverState) {
 			return &mcp.CallToolResult{IsError: true}, summarizeOutput{Artifact: artifact, Error: &terr}, nil
 		}
 		defer state.releaseAnalyzerSlot()
-		out, err := runTShark(ctx, artifact.Path, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes, nil)
+		out, truncated, err := runTShark(ctx, artifact.Path, cfg.Timeout(), cfg.Analysis.MaxStdoutBytes, nil)
 		if err != nil {
 			terr := classify(err)
 			logger.InfoContext(ctx, "tool.result", slog.String("tool", "summarize_pcap"), slog.String("outcome", "error"), slog.String("error_kind", terr.Kind))
 			return &mcp.CallToolResult{IsError: true}, summarizeOutput{Artifact: artifact, Error: &terr}, nil
+		}
+		findings := []PacketFinding{{
+			Code:     FindingSummaryGenerated,
+			Severity: "info",
+			Message:  "Generated protocol hierarchy summary with tshark; packet payload bytes are not returned.",
+		}}
+		if truncated {
+			findings = append(findings, truncationFinding("tshark", "input pcap appears to have been cut short in the middle of a packet"))
 		}
 		logger.InfoContext(ctx, "tool.result", slog.String("tool", "summarize_pcap"), slog.String("outcome", "success"))
 		return nil, summarizeOutput{
 			Artifact:       artifact,
 			Analyzer:       "tshark",
 			ProtocolReport: out,
-			Findings: []PacketFinding{{
-				Code:     FindingSummaryGenerated,
-				Severity: "info",
-				Message:  "Generated protocol hierarchy summary with tshark; packet payload bytes are not returned.",
-			}},
+			Findings:       findings,
 		}, nil
 	})
 }
@@ -551,14 +570,14 @@ func underAny(path string, allowedDirs []string) bool {
 	return false
 }
 
-func runTShark(parent context.Context, path string, timeout time.Duration, maxBytes int, keylogArgs []string) (string, error) {
+func runTShark(parent context.Context, path string, timeout time.Duration, maxBytes int, keylogArgs []string) (string, bool, error) {
 	args := []string{"-n", "-r", path, "-q", "-z", "io,phs"}
 	args = append(keylogArgs, args...)
-	out, err := runAnalyzerCommand(parent, timeout, maxBytes, "tshark", args, "")
+	out, truncated, err := runAnalyzerCommandTolerant(parent, timeout, maxBytes, "tshark", args, "")
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	return out.Stdout, nil
+	return out.Stdout, truncated, nil
 }
 
 type limitedBuffer struct {
