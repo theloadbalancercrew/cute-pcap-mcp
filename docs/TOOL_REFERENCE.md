@@ -314,13 +314,23 @@ Tool errors:
   removed before the error returns.
 - `no_packets_matched` — the display filter matched zero packets.
   The empty derived pcap is removed before the error returns. Carries
-  `field: display_filter`.
+  `field: display_filter`. **Truncated-source caveat:** when the
+  source pcap was cut short mid-record, the verdict only covers the
+  readable prefix — matches after the truncation point are
+  unobservable. In that case the response includes a
+  `pcap_truncated` finding in `findings[]` even on the error path,
+  and the error message reads "produced zero packets in the readable
+  prefix; matches after the truncation point are unknown" so
+  orchestration cannot over-trust the no-match verdict. The empty
+  derived pcap is still removed.
 - `analyzer_unavailable` / `analyzer_failed` / `analyzer_timeout` —
   tshark was missing, exited non-zero on a non-recoverable error,
   or hit the call timeout. **Recognized truncated-pcap diagnostics
-  do NOT classify as `analyzer_failed`** — those preserve the
-  partial derived artifact and surface a `pcap_truncated` warning
-  finding instead (see "findings" above).
+  do NOT classify as `analyzer_failed`** — on the success path they
+  preserve the partial derived artifact and surface a
+  `pcap_truncated` warning finding; on the no-match path described
+  above they survive as a warning alongside the typed
+  `no_packets_matched` error.
 - `analyzer_failed` from `workspace.output_dir` not being configured;
   `pcap_filter` requires an output workspace.
 
