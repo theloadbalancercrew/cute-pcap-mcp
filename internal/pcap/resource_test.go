@@ -145,7 +145,7 @@ func TestRunZeekReportUsesWorkspaceTmpDir(t *testing.T) {
 
 	// Run zeek; if it succeeds the workdir is removed by the deferred
 	// RemoveAll, but the parent tmpDir must still have been created.
-	report, runErr := runZeekReport(t.Context(), pcap, cfg, 20, "")
+	report, _, runErr := runZeekReport(t.Context(), pcap, cfg, 20, "")
 	_ = report
 	_ = runErr // analyzer may legitimately fail in CI; we only assert tmp_dir creation.
 

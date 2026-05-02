@@ -71,18 +71,24 @@ func validateFilterInput(input filterInput) error {
 // file to populate the OutputArtifact wire shape. Packet count is
 // best-effort via capinfos -c; if that analyzer is missing the count
 // stays at zero and the output still carries the artifact reference.
-func runFilter(ctx context.Context, source ArtifactInfo, cfg config.Config, displayFilter string) (*OutputArtifact, int64, error) {
+//
+// The third return is the list of pcap_truncated warning findings
+// the call should surface alongside the artifact. tshark exits non-
+// zero on a truncated source pcap but still writes the readable
+// prefix into the derived pcap; runFilter detects that case via the
+// known stderr phrase and preserves the partial artifact.
+func runFilter(ctx context.Context, source ArtifactInfo, cfg config.Config, displayFilter string) (*OutputArtifact, int64, []PacketFinding, error) {
 	if cfg.Workspace.OutputDir == "" {
-		return nil, 0, fmt.Errorf("%w: workspace.output_dir is not configured; pcap_filter requires an output workspace", errAnalyzerFailed)
+		return nil, 0, nil, fmt.Errorf("%w: workspace.output_dir is not configured; pcap_filter requires an output workspace", errAnalyzerFailed)
 	}
 	if err := os.MkdirAll(cfg.Workspace.OutputDir, 0o700); err != nil {
-		return nil, 0, fmt.Errorf("%w: prepare workspace.output_dir: %v", errAnalyzerFailed, err)
+		return nil, 0, nil, fmt.Errorf("%w: prepare workspace.output_dir: %v", errAnalyzerFailed, err)
 	}
 
 	now := time.Now().UTC()
 	dir, err := makeUniqueCaptureDir(cfg.Workspace.OutputDir, source.SHA256, now)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	outPath := filepath.Join(dir, "filtered.pcap")
 
@@ -97,21 +103,32 @@ func runFilter(ctx context.Context, source ArtifactInfo, cfg config.Config, disp
 		"-F", "pcap",
 		"-w", outPath,
 	}, "")
+	var warnings []PacketFinding
 	if err != nil {
 		// tshark stderr fragments for filter rejection are
 		// classified into invalid_filter via isTSharkFilterError so
 		// the caller sees a typed input-validation kind, not a
 		// generic analyzer_failed.
 		if isTSharkFilterError(err) {
-			return nil, 0, invalidFilterError(strings.TrimPrefix(err.Error(), errAnalyzerFailed.Error()+": "))
+			return nil, 0, nil, invalidFilterError(strings.TrimPrefix(err.Error(), errAnalyzerFailed.Error()+": "))
 		}
-		return nil, 0, err
+		// Truncated source pcap: tshark exits non-zero (typically
+		// status 14 with the "appears to have been cut short"
+		// diagnostic), but it still wrote a readable filtered.pcap
+		// containing every packet it managed to read before the
+		// truncation. Preserve the artifact and surface a typed
+		// pcap_truncated warning rather than discarding the partial
+		// output as analyzer_failed.
+		if isTruncatedPCAPDiagnostic(out.Stderr) {
+			warnings = append(warnings, truncationFinding("tshark", out.Stderr))
+		} else {
+			return nil, 0, nil, err
+		}
 	}
-	_ = out
 
 	info, err := os.Stat(outPath)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: stat filtered pcap: %v", errAnalyzerFailed, err)
+		return nil, 0, nil, fmt.Errorf("%w: stat filtered pcap: %v", errAnalyzerFailed, err)
 	}
 
 	// Check the disk budget against the on-disk size BEFORE reading
@@ -124,13 +141,13 @@ func runFilter(ctx context.Context, source ArtifactInfo, cfg config.Config, disp
 		// holding it.
 		_ = os.Remove(outPath)
 		_ = os.Remove(dir)
-		return nil, 0, fmt.Errorf("%w: filtered pcap is %d bytes; exceeds analysis.output_disk_budget_bytes (%d)",
+		return nil, 0, nil, fmt.Errorf("%w: filtered pcap is %d bytes; exceeds analysis.output_disk_budget_bytes (%d)",
 			errOutputLimitReached, info.Size(), budget)
 	}
 
 	body, err := os.ReadFile(outPath)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: read filtered pcap for hash: %v", errAnalyzerFailed, err)
+		return nil, 0, nil, fmt.Errorf("%w: read filtered pcap for hash: %v", errAnalyzerFailed, err)
 	}
 
 	// Two-step packet-count flow keeps the no_packets_matched check
@@ -146,7 +163,7 @@ func runFilter(ctx context.Context, source ArtifactInfo, cfg config.Config, disp
 	//      derived pcap on that signal alone.
 	hasAny, err := tsharkHasAnyPacket(ctx, outPath, cfg)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	if !hasAny {
 		// Empty filter result: tshark confirmed zero matching packets.
@@ -156,7 +173,7 @@ func runFilter(ctx context.Context, source ArtifactInfo, cfg config.Config, disp
 		// workspace is not littered with header-only files.
 		_ = os.Remove(outPath)
 		_ = os.Remove(dir)
-		return nil, 0, fmt.Errorf("%w: display filter %q produced zero packets", errNoPacketsMatched, displayFilter)
+		return nil, 0, nil, fmt.Errorf("%w: display filter %q produced zero packets", errNoPacketsMatched, displayFilter)
 	}
 
 	packetCount := countPacketsWithCapinfos(ctx, outPath, cfg)
@@ -170,7 +187,7 @@ func runFilter(ctx context.Context, source ArtifactInfo, cfg config.Config, disp
 		GeneratedAt:   now.Format(time.RFC3339),
 		Kind:          OutputArtifactKindFilteredPCAP,
 	}
-	return artifact, packetCount, nil
+	return artifact, packetCount, warnings, nil
 }
 
 // tsharkHasAnyPacket is the definitive zero-packet check for the

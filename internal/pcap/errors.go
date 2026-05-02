@@ -133,6 +133,14 @@ const (
 	FindingF5ProfileHTTPObserved    = "f5_profile_http_observed"
 	FindingProfileApplied           = "analysis_profile_applied"
 	FindingProfileUnknown           = "analysis_profile_unknown"
+	// FindingPCAPTruncated is emitted (severity warning) when an
+	// analyzer reports that the input pcap is cut short mid-record
+	// but still produced usable partial evidence. Distinct from
+	// `analyzer_failed`, which is reserved for unrecoverable
+	// analyzer failures (binary missing, OOM, segfault) where no
+	// partial evidence is salvageable. See
+	// `isTruncatedPCAPDiagnostic` for the matched stderr phrases.
+	FindingPCAPTruncated = "pcap_truncated"
 )
 
 // Sentinel errors used internally and matched via errors.Is. The wire

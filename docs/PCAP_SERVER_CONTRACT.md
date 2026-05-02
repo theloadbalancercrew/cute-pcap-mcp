@@ -484,6 +484,7 @@ analyzers did not produce.
 | `f5_profile_resets_observed` | warning | The `f5_ltm_tls_debug` profile saw reset-bearing connections; message includes side counts. |
 | `f5_profile_tls_observed` | info | The `f5_ltm_tls_debug` profile summarized TLS handshakes; message includes handshake count + distinct SNI count. |
 | `f5_profile_http_observed` | info | The `f5_ltm_tls_debug` profile bucketed HTTP responses by status class. |
+| `pcap_truncated` | warning | The source pcap was cut short mid-record but the analyzers still produced usable partial evidence. The analyze pipeline preserves whatever capinfos / tshark / Zeek managed to read; `pcap_filter` preserves the partial derived pcap (every packet tshark read before hitting the truncation). The finding message names the analyzer that detected the truncation and carries a bounded fragment of its stderr. Distinct from `analyzer_failed`, which is reserved for unrecoverable analyzer failures (binary missing, OOM, segfault, unrelated crash) where no partial evidence is salvageable. |
 
 When an analyzer-level partial failure occurs in `analyze_pcap`, its
 `toolError.kind` is mirrored as a finding `code` for orchestration
