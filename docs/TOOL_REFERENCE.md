@@ -23,6 +23,10 @@ delivery plan see [`ROADMAP.md`](./ROADMAP.md).
   metadata. (Stable name; `inspect_pcap` is a one-release alias.)
 - `pcap_analyzer_status` — report local availability and versions of
   `capinfos`, `tshark`, and `zeek`.
+- `get_server_info` — read-only build/runtime metadata for this MCP
+  server (build version, commit, build time, Go version, MCP handshake
+  version, PCAP analysis schema version). No analyzer call; no file
+  read. Available in every server profile.
 - `pcap_analyze` — full analysis pipeline with capinfos, tshark, Zeek,
   bounded ASCII extraction, derived summaries, persisted JSON +
   Markdown artifacts, and findings. (Stable name; `analyze_pcap` is a
@@ -428,6 +432,55 @@ Success output:
 Tool errors:
 
 - none — analyzer absence is reported per-entry, not as a tool error.
+
+### `get_server_info`
+
+Return the PCAP MCP server's build and runtime metadata. Read-only;
+the handler is pure in-process (no analyzer call, no file read, no
+subprocess) so it answers fast and is safe to call before any
+allowlist or workspace config has resolved. The same `internal/buildinfo`
+package symbols backing the CLI `--version` flag are reused so the
+two surfaces cannot drift. Available in every server profile.
+
+`pcap_analyzer_status` remains the authoritative answer for analyzer
+availability and version strings (`tshark`, `capinfos`, `zeek`); this
+tool intentionally does NOT probe the analyzer binaries.
+
+Input:
+
+- no arguments
+
+Success output:
+
+- `name`: product / server identity. Always `"cute-pcap-mcp"`.
+- `build_version`: link-time release version from `internal/buildinfo`
+  (the value the linker injects via `-ldflags`). Falls back to the
+  `"unknown"` sentinel for dev builds.
+- `commit`: VCS revision from `internal/buildinfo`. Same fallback.
+- `build_time`: link-time build timestamp from `internal/buildinfo`.
+  Same fallback.
+- `go_version`: Go toolchain version from `runtime.Version()` via
+  `internal/buildinfo`.
+- `mcp_server_version`: the MCP handshake `serverInfo.version` this
+  server advertises during initialize. Distinct from `build_version`:
+  this is the wire-protocol identity version, not the release
+  artifact's injected version.
+- `schema_version`: the current PCAP analysis output schema version
+  (the same value `pcap_analyze` and `pcap_explain_connection` stamp
+  on every response). Lets a host pair the server build version with
+  the analysis-contract version.
+- `config_source`: closed enum describing where the server resolved
+  its config from. Today this is always `"file"` (the binary requires
+  `-c`/`--config`); `"env"` and `"default"` are reserved for future
+  fallbacks. Never a path.
+- `analyzer_status_available`: `true` when `pcap_analyzer_status` is
+  registered on this server. Static in-process check, not a runtime
+  probe of the analyzer binaries.
+
+Tool errors:
+
+- none — the handler is pure metadata and cannot fail under normal
+  operation.
 
 ### `summarize_pcap`
 

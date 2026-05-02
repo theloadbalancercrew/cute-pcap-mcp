@@ -15,6 +15,7 @@ func TestServerRegistersStableAndLegacyToolNames(t *testing.T) {
 	got := registeredToolNames(t)
 	want := []string{
 		"analyze_pcap",
+		"get_server_info",
 		"inspect_pcap",
 		"pcap_analyze",
 		"pcap_analyzer_status",
