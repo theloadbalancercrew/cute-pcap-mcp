@@ -236,6 +236,17 @@ func registerTools(server *mcp.Server, state *serverState) {
 		return nil, out, nil
 	})
 
+	// get_server_info is the read-only build/runtime metadata tool
+	// (#4). Registered alongside pcap_analyzer_status because both
+	// are diagnostic, no-input, no-side-effect tools available in
+	// every server profile. Pure in-process: NO analyzer dispatch.
+	// pcap_analyzer_status remains the authoritative analyzer-
+	// version tool. The analyzerStatusAvailable=true parameter
+	// reflects the static fact that this very registerTools call
+	// also registers pcap_analyzer_status above; if a future build
+	// gates that registration, flip the bit here.
+	registerGetServerInfoTool(server, true)
+
 	// pcap_analyze is the new stable name. analyze_pcap is kept as a
 	// compatibility alias for one release.
 	for _, name := range []string{"pcap_analyze", "analyze_pcap"} {

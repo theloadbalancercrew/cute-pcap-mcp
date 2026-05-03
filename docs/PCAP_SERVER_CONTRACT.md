@@ -68,6 +68,28 @@ and treats every external analyzer call as a bounded operation:
   `analysis_busy` error rather than queueing, so the saturated state
   is observable to the host.
 
+## Server identity
+
+Two surfaces report this server's identity to MCP hosts:
+
+- The **MCP handshake** carries the static implementation identity in
+  `serverInfo` — `name = cute-pcap-mcp` and a stable `version`
+  constant (`mcp_server_version`). This is the wire-protocol
+  identity, not the release artifact's injected version.
+- The **`get_server_info`** tool ([TOOL_REFERENCE.md](./TOOL_REFERENCE.md#get_server_info))
+  is the richer support/debug surface. It returns the link-time
+  `build_version`, `commit`, `build_time`, and `go_version` from
+  `internal/buildinfo` (the same source the CLI `--version` flag
+  reads, so the two surfaces cannot drift), plus `schema_version`
+  (the analysis-output schema below) and a `config_source` closed
+  enum. The handler is pure in-process: no analyzer dispatch, no
+  file read.
+
+`get_server_info` does NOT report analyzer (`tshark`, `capinfos`,
+`zeek`) availability or version strings. That is the
+[`pcap_analyzer_status`](./TOOL_REFERENCE.md#pcap_analyzer_status)
+tool's job; it remains the authoritative analyzer-version answer.
+
 ## Schema versioning
 
 `pcap_analyze` (and its `analyze_pcap` alias) stamp the response with

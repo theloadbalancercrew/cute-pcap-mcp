@@ -433,6 +433,13 @@ Stable names (use these in new orchestration):
   `frame_number`.
 - `pcap_analyzer_status`: report local availability and versions for
   `capinfos`, `tshark`, and Zeek.
+- `get_server_info`: read-only build/runtime metadata for this MCP
+  server (build version, commit, build time, Go version, MCP
+  handshake version, PCAP analysis schema version). Operators can
+  use this to answer "what version of `cute-pcap-mcp` am I connected
+  to?" from any MCP host without leaving the chat. Reuses the same
+  `internal/buildinfo` source as the CLI `--version` flag, so the
+  two cannot drift.
 
 Legacy aliases (kept registered for one release; migrate to the
 stable names above):
