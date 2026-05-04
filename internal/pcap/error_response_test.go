@@ -57,10 +57,12 @@ func TestExplainConnectionSelectorFailureSetsIsError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = session.Close() })
 
-	// frame_number 999 is not present in the synthetic pcap; the
-	// resolver returns errAnalyzerFailed which classify wraps. The
-	// handler must surface that as IsError=true, not a successful
-	// call.
+	// frame_number 999 is past the end of the synthetic 1-frame pcap;
+	// the resolver returns errFrameOutOfRange, which classify wraps as
+	// the typed frame_number_out_of_range kind. The handler must
+	// surface that as IsError=true (not a successful call with an
+	// embedded error) and the typed kind must survive the MCP round
+	// trip so hosts can switch on it without parsing the message.
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "pcap_explain_connection",
 		Arguments: map[string]any{
@@ -74,6 +76,20 @@ func TestExplainConnectionSelectorFailureSetsIsError(t *testing.T) {
 	if !result.IsError {
 		body, _ := json.Marshal(result.StructuredContent)
 		t.Fatalf("expected IsError=true on selector failure; got false. structured=%s", string(body))
+	}
+	body, _ := json.Marshal(result.StructuredContent)
+	var got explainOutput
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("unmarshal structured content: %v (body=%s)", err, string(body))
+	}
+	if got.Error == nil {
+		t.Fatalf("expected non-nil Error on selector failure; structured=%s", string(body))
+	}
+	if got.Error.Kind != ErrorKindFrameNumberOutOfRange {
+		t.Fatalf("Error.Kind = %q, want %q (message=%q)", got.Error.Kind, ErrorKindFrameNumberOutOfRange, got.Error.Message)
+	}
+	if got.Error.Field != "frame_number" {
+		t.Fatalf("Error.Field = %q, want %q", got.Error.Field, "frame_number")
 	}
 
 	// Persisted artifacts must NOT have been written for the failed

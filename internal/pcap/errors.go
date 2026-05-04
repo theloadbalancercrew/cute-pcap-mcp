@@ -98,6 +98,19 @@ const (
 	// remediation is "raise the budget or narrow the call," not "fix the
 	// capture."
 	ErrorKindAnalyzerTimeout = "analyzer_timeout"
+
+	// ErrorKindFrameNumberOutOfRange is emitted by
+	// pcap_explain_connection when the frame_number selector points
+	// past the last frame in the capture. Distinct from
+	// frame_not_on_stream: the frame genuinely does not exist.
+	ErrorKindFrameNumberOutOfRange = "frame_number_out_of_range"
+
+	// ErrorKindFrameNotOnStream is emitted by pcap_explain_connection
+	// when the frame_number selector resolves to a real frame that is
+	// not on a TCP or UDP stream the explainer can scope to (e.g.,
+	// ARP, ICMP-only, FILEINFO records). The message names the
+	// frame's protocol so the operator knows why.
+	ErrorKindFrameNotOnStream = "frame_not_on_stream"
 )
 
 // ValidationReason tokens describe stable, per-field reasons for a
@@ -114,18 +127,18 @@ const (
 // PacketFinding.Code. Findings are always informational/warning-level
 // signals about the analysis itself, not packet-content claims.
 const (
-	FindingAnalysisGenerated      = "analysis_generated"
-	FindingSummaryGenerated       = "summary_generated"
-	FindingTSharkAnalysisAvail    = "tshark_analysis_available"
-	FindingZeekAnalysisAvail      = "zeek_analysis_available"
-	FindingASCIIStringsExtracted  = "ascii_strings_extracted"
-	FindingASCIIStringsRedacted   = "ascii_strings_redacted"
-	FindingASCIIStringsTruncated  = "ascii_strings_truncated"
-	FindingZeekNoticesPresent     = "zeek_notices_present"
-	FindingZeekWeirdEventsPresent = "zeek_weird_events_present"
-	FindingHTTPErrorStatuses      = "http_error_statuses_present"
-	FindingDNSRejectionsPresent   = "dns_rejections_present"
-	FindingTCPResetsPresent       = "tcp_resets_present"
+	FindingAnalysisGenerated        = "analysis_generated"
+	FindingSummaryGenerated         = "summary_generated"
+	FindingTSharkAnalysisAvail      = "tshark_analysis_available"
+	FindingZeekAnalysisAvail        = "zeek_analysis_available"
+	FindingASCIIStringsExtracted    = "ascii_strings_extracted"
+	FindingASCIIStringsRedacted     = "ascii_strings_redacted"
+	FindingASCIIStringsTruncated    = "ascii_strings_truncated"
+	FindingZeekNoticesPresent       = "zeek_notices_present"
+	FindingZeekWeirdEventsPresent   = "zeek_weird_events_present"
+	FindingHTTPErrorStatuses        = "http_error_statuses_present"
+	FindingDNSRejectionsPresent     = "dns_rejections_present"
+	FindingTCPResetsPresent         = "tcp_resets_present"
 	FindingFilteredPCAPWritten      = "filtered_pcap_written"
 	FindingConnectionEvidenceScoped = "connection_evidence_scoped"
 	FindingF5ProfileResetsObserved  = "f5_profile_resets_observed"
@@ -162,6 +175,8 @@ var (
 	errNoPacketsMatched     = errors.New(ErrorKindNoPacketsMatched)
 	errHashMismatch         = errors.New(ErrorKindHashMismatch)
 	errSizeMismatch         = errors.New(ErrorKindSizeMismatch)
+	errFrameOutOfRange      = errors.New(ErrorKindFrameNumberOutOfRange)
+	errFrameNotOnStream     = errors.New(ErrorKindFrameNotOnStream)
 )
 
 // validationFailure is the structured validation_failed error. classify
@@ -305,6 +320,20 @@ func classify(err error) toolError {
 			Message:     trimSentinelPrefix(err, errSizeMismatch),
 			Field:       "expected_size_bytes",
 			Remediation: "verify the producer wrote the file completely; if the producer did not measure the size, omit expected_size_bytes and the server will report the actual size",
+		}
+	case errors.Is(err, errFrameOutOfRange):
+		return toolError{
+			Kind:        ErrorKindFrameNumberOutOfRange,
+			Message:     trimSentinelPrefix(err, errFrameOutOfRange),
+			Field:       "frame_number",
+			Remediation: "pick a frame_number that exists in the capture; pcap_analyze enumerates valid frame numbers in its packets[] table",
+		}
+	case errors.Is(err, errFrameNotOnStream):
+		return toolError{
+			Kind:        ErrorKindFrameNotOnStream,
+			Message:     trimSentinelPrefix(err, errFrameNotOnStream),
+			Field:       "frame_number",
+			Remediation: "pick a frame_number that is on a tcp or udp stream (pcap_analyze packets[] shows the protocol per frame), or use the five_tuple selector instead",
 		}
 	default:
 		return toolError{Kind: ErrorKindInvalidRequest, Message: err.Error()}

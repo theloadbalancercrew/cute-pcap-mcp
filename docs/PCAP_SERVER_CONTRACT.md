@@ -464,6 +464,8 @@ change.
 | `no_packets_matched` | yes | A `pcap_filter` display filter matched zero packets. The empty derived pcap is removed before the error returns. Distinct from `empty_capture`. |
 | `hash_mismatch` | yes | Caller-provided `expected_sha256` disagrees with the on-disk artifact. Carries `field: expected_sha256`. |
 | `size_mismatch` | yes | Caller-provided `expected_size_bytes` disagrees with the on-disk artifact. Carries `field: expected_size_bytes`. The size check fires before the hash read, so callers that supply size only still get a fast typed error. |
+| `frame_number_out_of_range` | yes | Emitted by `pcap_explain_connection` when the `frame_number` selector points past the last frame in the capture. Carries `field: frame_number`; the message names the valid range when capinfos was available. |
+| `frame_not_on_stream` | yes | Emitted by `pcap_explain_connection` when the `frame_number` selector resolves to a real frame that is not on a tcp/udp stream the explainer can scope to (e.g., ARP, ICMP-only, FILEINFO records). Carries `field: frame_number`; the message names the frame's protocol so the operator understands. Distinct from `frame_number_out_of_range`. |
 | `empty_capture` | reserved (future) | Capture is structurally valid but contains zero packets. Will be emitted from `pcap_analyze` once the capinfos pass surfaces zero-packet captures distinctly. |
 
 ## Validation reason tokens
