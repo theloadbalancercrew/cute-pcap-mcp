@@ -402,9 +402,16 @@ Tool errors:
   `artifact_not_found`, `pcap_too_large`, `hash_mismatch`,
   `size_mismatch` — same semantics as `pcap_validate`.
 - `analysis_busy` — concurrent-analyzer cap saturated. Retryable.
-- `analyzer_failed` — frame-number selector hit a frame that does
-  not resolve to a tcp/udp stream, or `zeek_uid` was not found in
-  `conn.log`.
+- `frame_number_out_of_range` — `frame_number` selector points past
+  the last frame in the capture. Carries `field: frame_number`; the
+  message names the valid range when capinfos was available.
+- `frame_not_on_stream` — `frame_number` selector resolved to a real
+  frame that is not on a tcp/udp stream (e.g., ARP, ICMP-only,
+  FILEINFO records). Carries `field: frame_number`; the message names
+  the frame's protocol.
+- `analyzer_failed` — `zeek_uid` was not found in `conn.log`, or
+  another analyzer-level failure occurred while resolving the
+  selector.
 - All errors from `pcap_analyze` are passed through (per-section
   failures land in `errors[]`).
 

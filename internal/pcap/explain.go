@@ -239,6 +239,21 @@ func buildFiveTupleFilter(ft FiveTuple) string {
 // to its tcp.stream / udp.stream id and 5-tuple. Returns the stream
 // id, the protocol token used in the filter ("tcp" or "udp"), and the
 // derived 5-tuple for the ResolvedSelector echo.
+//
+// The query also pulls _ws.col.Protocol so the caller can distinguish
+// three outcomes from a single shell-out:
+//
+//  1. tshark returned no row → the frame number is past the end of
+//     the capture (frame_number_out_of_range).
+//  2. A row came back with a stream id → resolve normally.
+//  3. A row came back without a stream id → the frame exists but is
+//     not on a tcp/udp stream (frame_not_on_stream); the row's
+//     _ws.col.Protocol value tells the operator what it is (ARP,
+//     ICMP, FILEINFO, etc.).
+//
+// The previous implementation collapsed (1) and (3) into a misleading
+// "frame not found" error because strings.TrimSpace on a row of all-
+// empty stream/ip/port columns returned the empty string.
 func resolveFrameNumber(ctx context.Context, source ArtifactInfo, cfg config.Config, frame int) (string, string, *FiveTuple, error) {
 	args := []string{
 		"-n",
@@ -256,17 +271,25 @@ func resolveFrameNumber(ctx context.Context, source ArtifactInfo, cfg config.Con
 		"-e", "tcp.dstport",
 		"-e", "udp.srcport",
 		"-e", "udp.dstport",
+		"-e", "_ws.col.Protocol",
 	}
 	out, err := runAnalyzerCommand(ctx, cfg.Timeout(), 64*1024, "tshark", args, "")
 	if err != nil {
 		return "", "", nil, err
 	}
-	line := strings.TrimSpace(out.Stdout)
-	if line == "" {
-		return "", "", nil, fmt.Errorf("%w: frame %d not found in capture", errAnalyzerFailed, frame)
+	// strings.TrimSpace would hide a row of all-empty fields (the bug
+	// we are fixing); split on newline first and strip a single
+	// trailing empty record so we can tell "no row" from "row of
+	// blanks".
+	rawLines := strings.Split(out.Stdout, "\n")
+	for len(rawLines) > 0 && rawLines[len(rawLines)-1] == "" {
+		rawLines = rawLines[:len(rawLines)-1]
 	}
-	cols := strings.Split(line, "\t")
-	for len(cols) < 8 {
+	if len(rawLines) == 0 {
+		return "", "", nil, frameOutOfRangeError(ctx, source, cfg, frame)
+	}
+	cols := strings.Split(rawLines[0], "\t")
+	for len(cols) < 9 {
 		cols = append(cols, "")
 	}
 	tcpStream := strings.TrimSpace(cols[0])
@@ -277,6 +300,7 @@ func resolveFrameNumber(ctx context.Context, source ArtifactInfo, cfg config.Con
 	tcpDPort := strings.TrimSpace(cols[5])
 	udpSPort := strings.TrimSpace(cols[6])
 	udpDPort := strings.TrimSpace(cols[7])
+	frameProtocol := strings.TrimSpace(cols[8])
 
 	if tcpStream != "" {
 		ft := &FiveTuple{
@@ -298,7 +322,23 @@ func resolveFrameNumber(ctx context.Context, source ArtifactInfo, cfg config.Con
 		}
 		return udpStream, "udp", ft, nil
 	}
-	return "", "", nil, fmt.Errorf("%w: frame %d is not on a tcp or udp stream", errAnalyzerFailed, frame)
+	if frameProtocol == "" {
+		frameProtocol = "non-IP"
+	}
+	return "", "", nil, fmt.Errorf("%w: frame %d is on protocol %s; only tcp/udp streams are supported", errFrameNotOnStream, frame, frameProtocol)
+}
+
+// frameOutOfRangeError builds a frame_number_out_of_range error,
+// best-effort attaching the capture's max frame number from capinfos
+// so the operator sees the valid range. capinfos missing or failing
+// is non-fatal: the typed kind is still correct, the message just
+// drops the range hint.
+func frameOutOfRangeError(ctx context.Context, source ArtifactInfo, cfg config.Config, frame int) error {
+	maxFrame := countPacketsWithCapinfos(ctx, source.Path, cfg)
+	if maxFrame > 0 {
+		return fmt.Errorf("%w: frame %d is past the end of the capture (pcap has frames 1..%d)", errFrameOutOfRange, frame, maxFrame)
+	}
+	return fmt.Errorf("%w: frame %d does not exist in the capture", errFrameOutOfRange, frame)
 }
 
 // resolveZeekUID runs Zeek on the source pcap, finds the conn.log

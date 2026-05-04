@@ -1,8 +1,11 @@
 package pcap
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -269,4 +272,137 @@ func TestExplainConnectionFiveTupleIntegration(t *testing.T) {
 	if !scoped {
 		t.Fatalf("connection_evidence_scoped finding missing; got %#v", out.Findings)
 	}
+}
+
+// TestResolveFrameNumberOutOfRange covers the bug from #10 case (1):
+// the operator picks a frame_number past the last frame in the
+// capture. The pre-fix code returned analyzer_failed("frame N not
+// found in capture"); the fix returns the typed
+// frame_number_out_of_range so a host can switch on the kind.
+func TestResolveFrameNumberOutOfRange(t *testing.T) {
+	requireCommand(t, "tshark")
+
+	root := t.TempDir()
+	pcap := filepath.Join(root, "http.pcap")
+	if err := os.WriteFile(pcap, syntheticHTTPPcap(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Normalize(config.Config{
+		AllowedArtifactDirs: []string{root},
+		Analysis:            config.AnalysisConfig{CommandTimeoutSeconds: 10, MaxStdoutBytes: 200000},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := inspectArtifact(pcap, cfg, artifactExpectations{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, _, err = resolveFrameNumber(context.Background(), source, cfg, 999)
+	if err == nil {
+		t.Fatal("expected error for frame past end of capture, got nil")
+	}
+	terr := classify(err)
+	if terr.Kind != ErrorKindFrameNumberOutOfRange {
+		t.Fatalf("Kind = %q, want %q (message=%q)", terr.Kind, ErrorKindFrameNumberOutOfRange, terr.Message)
+	}
+	if terr.Field != "frame_number" {
+		t.Fatalf("Field = %q, want %q", terr.Field, "frame_number")
+	}
+	// Best-effort: capinfos is normally available alongside tshark in
+	// the test environment, in which case the message should name the
+	// valid range. Skip the range assertion if capinfos was missing.
+	if _, lookErr := exec.LookPath("capinfos"); lookErr == nil {
+		if !strings.Contains(terr.Message, "frames 1..1") {
+			t.Fatalf("message %q does not name the valid frame range", terr.Message)
+		}
+	}
+}
+
+// TestResolveFrameNumberNotOnStream covers the bug from #10 case (3):
+// the frame exists but is on a non-IP / non-TCP-UDP packet (here, a
+// synthetic ARP request). The pre-fix code emitted analyzer_failed
+// with "frame N not found in capture" because the all-empty stream
+// row was indistinguishable from "no row." The fix surfaces the
+// typed frame_not_on_stream kind plus the protocol name so the
+// operator understands.
+func TestResolveFrameNumberNotOnStream(t *testing.T) {
+	requireCommand(t, "tshark")
+
+	root := t.TempDir()
+	pcap := filepath.Join(root, "arp.pcap")
+	if err := os.WriteFile(pcap, syntheticARPPcap(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Normalize(config.Config{
+		AllowedArtifactDirs: []string{root},
+		Analysis:            config.AnalysisConfig{CommandTimeoutSeconds: 10, MaxStdoutBytes: 200000},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := inspectArtifact(pcap, cfg, artifactExpectations{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, _, err = resolveFrameNumber(context.Background(), source, cfg, 1)
+	if err == nil {
+		t.Fatal("expected error for non-stream frame, got nil")
+	}
+	terr := classify(err)
+	if terr.Kind != ErrorKindFrameNotOnStream {
+		t.Fatalf("Kind = %q, want %q (message=%q)", terr.Kind, ErrorKindFrameNotOnStream, terr.Message)
+	}
+	if terr.Field != "frame_number" {
+		t.Fatalf("Field = %q, want %q", terr.Field, "frame_number")
+	}
+	if !strings.Contains(strings.ToUpper(terr.Message), "ARP") {
+		t.Fatalf("message %q does not name the frame protocol (expected ARP)", terr.Message)
+	}
+}
+
+// syntheticARPPcap returns a 1-frame libpcap file containing an
+// Ethernet ARP request. ARP frames are not on a tcp/udp stream, so
+// they exercise the frame_not_on_stream path. The wire format mirrors
+// syntheticHTTPPcap: standard pcap global header + one record header
+// + Ethernet frame.
+func syntheticARPPcap() []byte {
+	const ethHdr = 14
+	const arpLen = 28
+	frame := make([]byte, ethHdr+arpLen)
+
+	copy(frame[0:6], []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff})
+	copy(frame[6:12], []byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01})
+	binary.BigEndian.PutUint16(frame[12:14], 0x0806)
+
+	arp := frame[ethHdr:]
+	binary.BigEndian.PutUint16(arp[0:2], 0x0001)
+	binary.BigEndian.PutUint16(arp[2:4], 0x0800)
+	arp[4] = 6
+	arp[5] = 4
+	binary.BigEndian.PutUint16(arp[6:8], 0x0001)
+	copy(arp[8:14], []byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01})
+	copy(arp[14:18], []byte{192, 0, 2, 10})
+	copy(arp[18:24], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
+	copy(arp[24:28], []byte{192, 0, 2, 1})
+
+	var buf bytes.Buffer
+	writeLE := func(v any) {
+		_ = binary.Write(&buf, binary.LittleEndian, v)
+	}
+	writeLE(uint32(0xa1b2c3d4))
+	writeLE(uint16(2))
+	writeLE(uint16(4))
+	writeLE(int32(0))
+	writeLE(uint32(0))
+	writeLE(uint32(65535))
+	writeLE(uint32(1))
+	writeLE(uint32(1))
+	writeLE(uint32(0))
+	writeLE(uint32(len(frame)))
+	writeLE(uint32(len(frame)))
+	buf.Write(frame)
+	return buf.Bytes()
 }
