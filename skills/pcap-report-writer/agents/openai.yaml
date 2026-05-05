@@ -1,9 +1,0 @@
-interface:
-  display_name: "PCAP Report Writer"
-  short_description: "Write concise reports from packet evidence"
-  icon_small: "./assets/icon.svg"
-  icon_large: "./assets/icon.svg"
-  brand_color: "#475569"
-  default_prompt: "Use $pcap-report-writer to write a packet-evidence report from this pcap analysis."
-policy:
-  allow_implicit_invocation: true

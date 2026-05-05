@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Load balancer path debug">
-  <rect width="64" height="64" rx="12" fill="#DC2626"/>
-  <path d="M16 20h12M36 20h12M28 20h8M32 20v12M20 44h24M32 32v12" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="16" cy="20" r="5" fill="#FECACA"/>
-  <circle cx="48" cy="20" r="5" fill="#FECACA"/>
-  <circle cx="20" cy="44" r="5" fill="#FECACA"/>
-  <circle cx="44" cy="44" r="5" fill="#FECACA"/>
-</svg>

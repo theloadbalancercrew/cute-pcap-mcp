@@ -40,8 +40,9 @@ The initial release focuses on a reliable local evidence loop:
   directory
 - Docker runtime with packet-analysis tooling included
 - native macOS/Linux/Windows release binaries
-- Claude/Codex skills for capture planning, triage, TLS keylog workflow,
-  load-balancer path analysis, and report writing
+- Claude/Codex server-local skills for packet analysis and TLS keylog
+  workflow, with capture planning, triage, load-balancer path analysis,
+  and report writing owned by `lbc-mcp-workspace`
 
 The design preference is **truth over closure**: unavailable analyzers,
 invalid filters, missing captures, unsupported selectors, and ambiguous

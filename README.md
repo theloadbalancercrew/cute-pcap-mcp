@@ -85,7 +85,9 @@ and download the newest package for your OS and CPU:
 | Windows ARM64 | `cute-pcap-mcp-windows-arm64.tar.gz` |
 
 Also download `cute-pcap-mcp-skills-<version>.zip` if you want the
-Claude/Codex helper skills. That bundle contains individual skill ZIPs.
+Claude/Codex server-local helper skills. Cross-domain triage, capture
+planning, path-debug, and report-writing skills now live in
+`lbc-mcp-workspace`.
 
 If you do not see a release for your platform — or you want the very
 latest `main` — see [Building from source](#building-from-source). The
@@ -271,7 +273,7 @@ see [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
 Download `cute-pcap-mcp-skills-<version>.zip` from the
 [Releases page](https://github.com/theloadbalancercrew/cute-pcap-mcp/releases)
 and unzip it. The extracted files are individual skill ZIPs such as
-`pcap-analysis.zip`, `network-triage.zip`, and `capture-planning.zip`.
+`pcap-analysis.zip` and `tls-decryption.zip`.
 
 In Claude:
 
@@ -388,7 +390,8 @@ model-facing contract lives in `docs/TOOL_REFERENCE.md` (per-tool
 input/output/error sets) and `docs/PCAP_SERVER_CONTRACT.md` (wire
 shapes, error taxonomy, finding codes, and privacy invariants). The
 CI truth table lives in `docs/PCAP_TESTS_AND_SMOKE.md`. Adjacent
-agent workflow skills live in `skills/`; see `docs/SKILLS.md`.
+server-local skills live in `skills/`; adjacent cross-domain skills
+live in `lbc-mcp-workspace`. See `docs/SKILLS.md`.
 
 ## Building from source
 

@@ -14,7 +14,7 @@ of checks; this doc says why each one exists.
 | `build` | `golang:1.26-bookworm` | `make build` produces a `bin/cute-pcap-mcp` binary; the binary's `--version` exits 0. The artifact is archived for 7 days. | That the binary runs correctly inside the Docker image. The `docker` stage covers that. |
 | `release-binary` matrix | `golang:1.26-bookworm` | Each matrix job runs `make release-binaries` for one OS/arch pair and archives only that platform tarball plus `dist/checksums.txt`. | That every cross-compiled binary runs on its target OS/arch. Cross-compilation proves compilation and checksums, not runtime execution on those platforms. |
 | `skill-package` matrix | `golang:1.26-bookworm` + `zip` / `unzip` | Each matrix job packages one Claude/Codex skill ZIP and verifies `SKILL.md` is at the ZIP root. | That Claude's hosted skill UI accepts a given ZIP in every future UI version. |
-| `skills-bundle` | `golang:1.26-bookworm` + `zip` / `unzip` | `make skills-bundle` packages every skill ZIP, then creates one convenience ZIP containing those ZIPs plus their checksum file. | That users installed every skill. The bundle is only a download convenience; Claude still imports skill ZIPs individually. |
+| `skills-bundle` | `golang:1.26-bookworm` + `zip` / `unzip` | `make skills-bundle` packages every server-local skill ZIP, then creates one convenience ZIP containing those ZIPs plus their checksum file. | That users installed every skill they need. Cross-domain skills are packaged from `lbc-mcp-workspace`; Claude still imports skill ZIPs individually. |
 | `docker` | Docker Engine | The runtime image builds reproducibly. Every analyzer the runtime promises (`cute-pcap-mcp`, `tshark`, `capinfos`, `tcpdump`, `zeek`, `jq`, `python3`) resolves on PATH inside the image. `cute-pcap-mcp --version` exits 0 from the entrypoint. | That Zeek-derived sections are populated end-to-end. The `integration` stage covers that. |
 | `integration` | `zeek/zeek:lts` + apt-installed `tshark` / `jq` / `python3` + downloaded Go | The full test suite **with** every integration test running (no skips). Exercises the tshark / Zeek format contract against deterministic synthetic captures. | That the runtime image's specific tshark / Zeek versions agree with `zeek/zeek:lts`. The `docker` stage covers binary presence; integration covers behavior on the LTS Zeek build. |
 
@@ -131,7 +131,7 @@ RELEASE_PLATFORMS=darwin/arm64 make release-binaries
 # Build only one skill package:
 SKILLS=pcap-analysis make skills-package
 
-# Build the all-skills convenience ZIP:
+# Build the server-local skills convenience ZIP:
 make skills-bundle
 
 # Mirror the docker stage:
