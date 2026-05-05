@@ -7,12 +7,15 @@ package pcap
 //
 // Pure in-process: NO analyzer call, NO file read, NO subprocess.
 // The handler reads the same `internal/buildinfo` package symbols
-// the `--version` flag prints, plus the static MCP handshake
-// `serverVersion` constant and the PCAP analysis-contract
-// `SchemaVersion`. The MCP handshake's `serverInfo` continues to
-// carry only the static implementation identity (`name =
-// cute-pcap-mcp`, `version = serverVersion`); `get_server_info` is
-// the richer support/debug surface.
+// the `--version` flag prints, plus the PCAP analysis-contract
+// `SchemaVersion`. Per #14, `mcp_server_version` carries the same
+// product version as `build_version` — both come from
+// `buildinfo.Get().Version`, the same value the MCP handshake's
+// `serverInfo.version` advertises during initialize. There is no
+// invented "MCP generation" or protocol-identifier semantic on
+// this field; it just answers "what version of this specific
+// server am I connected to?" `get_server_info` is the richer
+// support/debug surface around the same identity.
 //
 // Hard rules (#4):
 //
@@ -46,7 +49,7 @@ import (
 // when listing tools. It MUST mention the closed-vocabulary output
 // fields so a client / model can decide whether the tool answers
 // the question without first calling it.
-const getServerInfoDescription = "Get this PCAP MCP server's build and runtime metadata. Read-only; no analyzer call; no file read; available in every server profile. Output fields: name (product identity, always cute-pcap-mcp), build_version, commit, build_time, go_version (build/runtime metadata sourced from the same internal/buildinfo symbols the --version CLI flag prints), mcp_server_version (MCP handshake serverInfo.version), schema_version (PCAP analysis output schema version), config_source (closed enum: file | env | default; never a path), analyzer_status_available (true when pcap_analyzer_status is registered on this server; does NOT probe tshark/capinfos/zeek — pcap_analyzer_status remains the authoritative analyzer-version tool)."
+const getServerInfoDescription = "Get this PCAP MCP server's build and runtime metadata. Read-only; no analyzer call; no file read; available in every server profile. Output fields: name (product identity, always cute-pcap-mcp), build_version, commit, build_time, go_version (build/runtime metadata sourced from the same internal/buildinfo symbols the --version CLI flag prints), mcp_server_version (this server's product version, identical to build_version; the MCP handshake serverInfo.version advertises the same value), schema_version (PCAP analysis output schema version), config_source (closed enum: file | env | default; never a path), analyzer_status_available (true when pcap_analyzer_status is registered on this server; does NOT probe tshark/capinfos/zeek — pcap_analyzer_status remains the authoritative analyzer-version tool)."
 
 // getServerInfoInput is the empty input shape for the tool. The
 // MCP host calls `get_server_info` with no arguments.
@@ -74,11 +77,16 @@ type GetServerInfoOutput struct {
 	// GoVersion is the Go toolchain version that compiled the
 	// binary. Sourced from `internal/buildinfo` via runtime.Version().
 	GoVersion string `json:"go_version" jsonschema:"Go toolchain version from runtime.Version()"`
-	// MCPServerVersion is the MCP handshake `serverInfo.version`
-	// the PCAP MCP server advertises during initialize. Distinct
-	// from BuildVersion: this is the wire-protocol-facing identity
-	// version, not the release artifact's injected version.
-	MCPServerVersion string `json:"mcp_server_version" jsonschema:"MCP handshake serverInfo.version this server advertises"`
+	// MCPServerVersion is this server's product version — identical
+	// to BuildVersion. Both are sourced from `buildinfo.Get().Version`,
+	// the same value the MCP handshake's `serverInfo.version`
+	// advertises during initialize. Per #14 this field carries no
+	// "MCP generation" or protocol-identifier semantic; it just
+	// answers "what version of this specific server am I connected
+	// to?" If a future need arises to version a separate concept
+	// (e.g. a shared cute-family file/spec contract), it gets its
+	// own field — we do not overload this one.
+	MCPServerVersion string `json:"mcp_server_version" jsonschema:"this server's product version (identical to build_version); also the value advertised in the MCP handshake serverInfo.version"`
 	// SchemaVersion is the current PCAP analysis output schema
 	// version (the same value `pcap_analyze` /
 	// `pcap_explain_connection` stamp on every response and on
@@ -139,7 +147,7 @@ func registerGetServerInfoTool(server *mcp.Server, analyzerStatusAvailable bool)
 			Commit:                  info.Commit,
 			BuildTime:               info.BuildTime,
 			GoVersion:               info.GoVersion,
-			MCPServerVersion:        serverVersion,
+			MCPServerVersion:        info.Version,
 			SchemaVersion:           SchemaVersion,
 			ConfigSource:            "file",
 			AnalyzerStatusAvailable: analyzerStatusAvailable,

@@ -70,13 +70,19 @@ func TestGetServerInfoMatchesCliVersion(t *testing.T) {
 		t.Errorf("get_server_info.go_version = %q; buildinfo.Get().GoVersion = %q (must be identical — same source as --version)", out.GoVersion, want.GoVersion)
 	}
 
-	// Also pin the static identity fields so a future rename of
-	// either constant fails this test.
+	// Per #14: mcp_server_version is just the product version of
+	// *this* server — same source as build_version. A future MR
+	// that re-introduces a stale literal (e.g. hardcoded "0.1.0"),
+	// or invents a separate "MCP generation" identifier on this
+	// field, fails this assertion.
+	if out.MCPServerVersion != want.Version {
+		t.Errorf("get_server_info.mcp_server_version = %q; buildinfo.Get().Version = %q (must be identical — same source as build_version per #14)", out.MCPServerVersion, want.Version)
+	}
+
+	// Also pin the static identity fields so a future rename
+	// fails this test.
 	if out.Name != serverName {
 		t.Errorf("get_server_info.name = %q; want %q (serverName constant)", out.Name, serverName)
-	}
-	if out.MCPServerVersion != serverVersion {
-		t.Errorf("get_server_info.mcp_server_version = %q; want %q (serverVersion constant)", out.MCPServerVersion, serverVersion)
 	}
 	if out.SchemaVersion != SchemaVersion {
 		t.Errorf("get_server_info.schema_version = %q; want %q (pcap.SchemaVersion constant)", out.SchemaVersion, SchemaVersion)
@@ -161,7 +167,7 @@ func TestGetServerInfoOutputCarriesNoBannedFields(t *testing.T) {
 		"Commit":                  true, // VCS revision from buildinfo
 		"BuildTime":               true, // link-time timestamp from buildinfo
 		"GoVersion":               true, // Go toolchain version from runtime.Version()
-		"MCPServerVersion":        true, // MCP handshake serverInfo.version
+		"MCPServerVersion":        true, // this server's product version (same as build_version per #14)
 		"SchemaVersion":           true, // PCAP analysis output schema version
 		"ConfigSource":            true, // closed enum: file | env | default; never a path
 		"AnalyzerStatusAvailable": true, // bool; in-process registration check, no probe
@@ -244,7 +250,7 @@ func TestGetServerInfoToolRegisteredAndCallable(t *testing.T) {
 		t.Errorf("get_server_info returned empty GoVersion; runtime.Version() never returns empty")
 	}
 	if out.MCPServerVersion == "" {
-		t.Errorf("get_server_info returned empty MCPServerVersion; expected the serverVersion constant")
+		t.Errorf("get_server_info returned empty MCPServerVersion; expected at least the buildinfo sentinel (same source as build_version per #14)")
 	}
 	if out.SchemaVersion == "" {
 		t.Errorf("get_server_info returned empty SchemaVersion; expected the pcap.SchemaVersion constant")
