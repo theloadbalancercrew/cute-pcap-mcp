@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Network triage">
-  <rect width="64" height="64" rx="12" fill="#0F766E"/>
-  <path d="M18 20h28v16H18z" fill="#CCFBF1"/>
-  <path d="M32 36v10M20 48h24" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="24" cy="28" r="3" fill="#0F766E"/>
-  <circle cx="32" cy="28" r="3" fill="#0F766E"/>
-  <circle cx="40" cy="28" r="3" fill="#0F766E"/>
-</svg>
