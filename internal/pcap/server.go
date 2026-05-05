@@ -14,14 +14,14 @@ import (
 	"strings"
 	"time"
 
+	"cute-pcap-mcp/internal/buildinfo"
 	"cute-pcap-mcp/internal/config"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
-	serverName    = "cute-pcap-mcp"
-	serverVersion = "0.1.0"
+	serverName = "cute-pcap-mcp"
 )
 
 type ServerOptions struct {
@@ -36,7 +36,13 @@ func NewServer(cfg config.Config, opts ServerOptions) *mcp.Server {
 	if opts.Logger == nil {
 		opts.Logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
-	srv := mcp.NewServer(&mcp.Implementation{Name: serverName, Version: serverVersion}, nil)
+	// Per #14: the MCP handshake's serverInfo.version is just the
+	// product version of *this* server — not an invented "MCP
+	// generation" or protocol identifier. Both the handshake and
+	// get_server_info.mcp_server_version read the same buildinfo
+	// source `--version` does, so a client doing capability /
+	// version negotiation sees what they're actually talking to.
+	srv := mcp.NewServer(&mcp.Implementation{Name: serverName, Version: buildinfo.Get().Version}, nil)
 	registerTools(srv, newServerState(cfg, opts.Logger))
 	return srv
 }
