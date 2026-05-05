@@ -8,7 +8,7 @@ SKILLS ?= $(notdir $(wildcard skills/*))
 SKILLS_BUNDLE ?= cute-pcap-mcp-skills-$(VERSION).zip
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
-COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 LDFLAGS := -X $(BUILDINFO_PKG).version=$(VERSION) \
