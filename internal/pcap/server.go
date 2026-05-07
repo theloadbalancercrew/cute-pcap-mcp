@@ -262,6 +262,11 @@ func registerTools(server *mcp.Server, state *serverState) {
 		}, state.analyzeHandler(name))
 	}
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "pcap_diagnose_symptoms",
+		Description: "Diagnose an allowlisted pcap/pcapng into a closed vocabulary of vendor-neutral wire-level symptoms plus parser findings. Returns structural counters only, never raw payload bytes.",
+	}, state.diagnoseHandler("pcap_diagnose_symptoms"))
+
 	// pcap_filter writes a filtered pcap under workspace.output_dir
 	// from a tshark display filter. The output path is server-
 	// generated; callers cannot pick a destination.
