@@ -93,14 +93,15 @@ tool's job; it remains the authoritative analyzer-version answer.
 ## Schema versioning
 
 `pcap_analyze` (and its `analyze_pcap` alias) stamp the response with
-a `schema_version` field. The current value is **`1.0.0`**, defined
+a `schema_version` field. The current value is **`1.1.0`**, defined
 as `SchemaVersion` in [`output.go`](../internal/pcap/output.go).
 
-- **Patch** bumps (`1.0.x`) are bug fixes that do not change the wire
+- **Patch** bumps (`x.y.z`) are bug fixes that do not change the wire
   shape.
 - **Minor** bumps (`1.x.0`) are additive: new optional fields, new
-  finding codes, new error kinds. Hosts are expected to ignore
-  unknown optional fields.
+  finding codes, new error kinds, or new status tokens. Hosts are
+  expected to ignore unknown optional fields and handle unknown token
+  values conservatively.
 - **Major** bumps (`x.0.0`) are reserved for breaking changes
   (removed fields, renamed tokens, retyped values). They will land
   with a roadmap entry and a deprecation window.
@@ -326,7 +327,8 @@ typed status without parsing analyzer prose. The shape:
 | `not_requested` | Caller did not pass `tls_keylog_path`. No `keylog_path` / `limitations` are stamped. Also returned on hard-error responses (validation / path / busy) so the field is always present on the wire. |
 | `unavailable` | Keylog support is not configured on the server (`workspace.keylog_dir` empty), or the supplied path resolved outside that directory. The keylog is not handed to the analyzers. |
 | `keylog_missing` | The supplied path resolves under `workspace.keylog_dir` but no file exists there. |
-| `attempted` | The keylog was applied to tshark (`-o tls.keylog_file:`) and Zeek (`SSLKEYLOGFILE` env) and the analyzers ran without subprocess errors. **This does not prove any session was decrypted.** TLS handshake summaries appear in Zeek output regardless of whether a keylog matched, so the analyze pipeline cannot promote on that signal alone. The limitations list documents this honestly. |
+| `keylog_invalid` | The supplied file exists under `workspace.keylog_dir` but contains no recognized SSLKEYLOGFILE secret lines (blank/comment-only, malformed, unsupported label, or non-hex material). The keylog is not handed to the analyzers. |
+| `attempted` | The keylog was validated, then applied to tshark (`-o tls.keylog_file:`) and Zeek (`SSLKEYLOGFILE` env), and the analyzers ran without subprocess errors. **This does not prove any session was decrypted.** TLS handshake summaries appear in Zeek output regardless of whether a keylog matched, so the analyze pipeline cannot promote on that signal alone. The limitations list documents this honestly. |
 | `failed` | The keylog was applied but a keylog-consuming analyzer (tshark or Zeek) returned a subprocess error. Errors from analyzers that did not consume the keylog (capinfos, ASCII extraction) do not flip the status. The per-analyzer kind is in `errors[]`. |
 | `succeeded` | **Reserved on the wire; not emitted today.** A future implementation that has a reliable decrypted-evidence signal (e.g. http records that came from inside TLS streams) will promote `attempted` → `succeeded`. The token lives in the constant set so a future emission lands without a wire-shape change. Hosts may pre-allocate orchestration for it but should not branch as if it can be returned today. |
 
@@ -337,9 +339,12 @@ typed status without parsing analyzer prose. The shape:
   outside returns `unavailable`).
 - The keylog file must be a regular file under
   `workspace.keylog_dir`.
-- The server **never reads** the keylog itself. It is handed to
-  tshark via `-o` and to Zeek via `SSLKEYLOGFILE` set on the
-  subprocess env (not the parent process).
+- The server reads the keylog only to validate SSLKEYLOGFILE line
+  shape (recognized label plus hex key material). It returns counts
+  and status only; it never returns, logs, stores, copies, or persists
+  key material.
+- Validated keylogs are handed to tshark via `-o` and to Zeek via
+  `SSLKEYLOGFILE` set on the subprocess env (not the parent process).
 
 ### What this surface does NOT do
 
@@ -348,8 +353,9 @@ typed status without parsing analyzer prose. The shape:
   when decryption succeeds. Zeek's `http.log` summaries (with the
   unconditional URI redaction documented in the privacy invariants)
   remain the only HTTP evidence the response carries.
-- The server never copies, ships, or remotely reads keylog files.
-  Operators place the file under `workspace.keylog_dir` themselves.
+- The server never copies, ships, returns, or remotely reads keylog
+  files. Operators place the file under `workspace.keylog_dir`
+  themselves.
 - TLS payload decryption is generally not possible from a pcap
   alone. The `limitations` list exhaustively documents why
   (forward-secret key exchange, missing server keys, partial
@@ -366,7 +372,7 @@ or more `OutputArtifact` entries:
   "size_bytes": 12345,
   "sha256": "<hex-of-file-bytes>",
   "content_type": "application/json",
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "generated_at": "2026-04-29T15:43:01Z",
   "kind": "analysis_json"
 }
@@ -583,18 +589,20 @@ implementation choices and asserted by tests.
 - `kind` tokens: never renamed; only added.
 - `reason` tokens: never renamed; only added.
 - Finding `code` tokens: never renamed; only added.
+- Status tokens such as `tls_decryption.status`: never renamed; only
+  added.
 - Output field names: additive. Removing a field is a breaking change
   and requires a roadmap entry.
 - `schema_version` is stamped on every `pcap_analyze` /
   `pcap_explain_connection` response and on every persisted
-  `OutputArtifact`. Current value is **`1.0.0`**, defined as
+  `OutputArtifact`. Current value is **`1.1.0`**, defined as
   `SchemaVersion` in
   [`output.go`](../internal/pcap/output.go). Bump rules: patch =
   fixes, minor = additive (new optional fields, new finding codes,
-  new error kinds), major = breaking. The `schema_version` value
-  itself, the field name, and the location at the top of the
-  response are stable; hosts should switch on this value before
-  parsing the rest.
+  new error kinds, new status tokens), major = breaking. The
+  `schema_version` value itself, the field name, and the location
+  at the top of the response are stable; hosts should switch on it
+  before parsing the rest.
 
 ## Where to look in code
 

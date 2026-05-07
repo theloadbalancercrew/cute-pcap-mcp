@@ -29,6 +29,7 @@ Use a display filter that can surface decrypted rows:
 tls || http || http2
 ```
 
-Treat `tls_decryption.status: attempted` as "keylog applied", not
-"decryption proved". Proof is visible decrypted HTTP/HTTP2 rows or
-Zeek HTTP records.
+Treat `keylog_invalid` as "the file exists but is not a usable
+SSLKEYLOGFILE." Treat `attempted` as "keylog applied", not "decryption
+proved". Proof is visible decrypted HTTP/HTTP2 rows or Zeek HTTP
+records.

@@ -53,7 +53,7 @@ Locally, these tests skip when the named binaries are absent.
 | Test | Synthetic input | Proves |
 | --- | --- | --- |
 | `TestAnalyzeArtifactIntegrationProfileFindingsSurvive` | Same pcap + `analysis_profile=f5_ltm_tls_debug` + VIP context | The dispatcher's `analysis_profile_applied` finding is merged into `out.Findings` after `buildFindings`. The unknown-name path emits `analysis_profile_unknown`. |
-| `TestExplainConnectionPassesKeylogToAnalyzePipeline` | Header-only pcap + valid `tls_keylog_path` under `keylog_dir` | `pcap_explain_connection` carries `tls_keylog_path` through the synthesized `analyzeInput`; the response's `tls_decryption.status` reflects the keylog plumbing (not `not_requested`). |
+| `TestExplainConnectionPassesKeylogToAnalyzePipeline` | Header-only pcap + valid `tls_keylog_path` under `keylog_dir` | `pcap_explain_connection` carries `tls_keylog_path` through the synthesized `analyzeInput`; the response's `tls_decryption.status` reflects validated keylog plumbing (not `not_requested` / `keylog_invalid`). |
 
 ### Privacy and redaction
 
@@ -91,6 +91,10 @@ helper. The full set lives in `internal/pcap/*_test.go` and
 - `TestFinalizeTLSDecryptionDoesNotPromoteOnHandshakeOnly` —
   verifies TLS keylog attempts are not promoted to `succeeded` from
   handshake visibility alone.
+- `TestResolveTLSKeylogStateMachine` /
+  `TestValidateTLSKeylogFileRecognizesModernLabels` — pin TLS keylog
+  allowlist/path states plus secret-safe SSLKEYLOGFILE shape
+  validation, including `keylog_invalid` for unusable files.
 - `TestInspectArtifactRejectsHashMismatch` /
   `TestInspectArtifactRejectsSizeMismatch` /
   `TestHashMismatchMessageDoesNotEchoCallerValue` — pin the external

@@ -6,6 +6,36 @@ import collections
 import re
 
 HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
+TRAFFIC_SECRET_RE = re.compile(r"^(?:CLIENT|SERVER)_TRAFFIC_SECRET_[0-9]+$")
+
+KNOWN_LABELS = {
+    "CLIENT_RANDOM",
+    "CLIENT_EARLY_TRAFFIC_SECRET",
+    "CLIENT_HANDSHAKE_TRAFFIC_SECRET",
+    "SERVER_HANDSHAKE_TRAFFIC_SECRET",
+    "EXPORTER_SECRET",
+    "EARLY_EXPORTER_SECRET",
+    "RSA",
+}
+
+
+def usable_secret_line(parts: list[str]) -> bool:
+    if len(parts) != 3:
+        return False
+    label, client_random, secret = parts
+    if label not in KNOWN_LABELS and not TRAFFIC_SECRET_RE.match(label):
+        return False
+    if not even_hex(client_random) or not even_hex(secret):
+        return False
+    if len(secret) < 64:
+        return False
+    if label != "RSA" and len(client_random) != 64:
+        return False
+    return True
+
+
+def even_hex(value: str) -> bool:
+    return len(value) > 0 and len(value) % 2 == 0 and bool(HEX_RE.match(value))
 
 
 def main() -> None:
@@ -25,7 +55,7 @@ def main() -> None:
                 continue
             total += 1
             parts = line.split()
-            if len(parts) != 3 or not HEX_RE.match(parts[1]) or not HEX_RE.match(parts[2]):
+            if not usable_secret_line(parts):
                 malformed += 1
                 continue
             labels[parts[0]] += 1

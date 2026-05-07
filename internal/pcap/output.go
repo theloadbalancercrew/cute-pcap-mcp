@@ -5,7 +5,7 @@ package pcap
 // breaking changes (removed fields, renamed fields, retyped values →
 // major). Hosts may switch on this value but should not break on
 // minor bumps.
-const SchemaVersion = "1.0.0"
+const SchemaVersion = "1.1.0"
 
 // analyzeOutput is the model-facing shape returned by both
 // pcap_analyze (the new stable name) and analyze_pcap (its

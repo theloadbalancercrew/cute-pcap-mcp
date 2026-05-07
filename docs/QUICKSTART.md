@@ -509,11 +509,12 @@ Use display_filter="tls || http" and max_packet_rows=100.
 Tell me whether any HTTP request or response packet rows prove decrypted TLS evidence.
 ```
 
-Current behavior is conservative: `tls_decryption.status: attempted`
-means the keylog was passed to tshark and Zeek without subprocess
-errors. It does not by itself prove any session was decrypted. Look for
-decrypted `HTTP` / `HTTP2` packet rows or Zeek HTTP records in the
-bounded evidence.
+Current behavior is conservative: `keylog_invalid` means the file did
+not contain recognized SSLKEYLOGFILE secret lines. `attempted` means
+the keylog was validated and passed to tshark and Zeek without
+subprocess errors. It does not by itself prove any session was
+decrypted. Look for decrypted `HTTP` / `HTTP2` packet rows or Zeek HTTP
+records in the bounded evidence.
 
 ## Troubleshooting
 

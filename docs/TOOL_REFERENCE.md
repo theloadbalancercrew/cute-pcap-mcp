@@ -154,9 +154,10 @@ Input:
   enables TLS decryption inside tshark (`-o tls.keylog_file:`) and
   Zeek (`SSLKEYLOGFILE` env). The response always carries a typed
   `tls_decryption` section reporting one of `not_requested` /
-  `unavailable` / `keylog_missing` / `attempted` / `succeeded` /
-  `failed`. Decrypted payload bytes are **never** returned in tool
-  output regardless of state — only the typed status. See the
+  `unavailable` / `keylog_missing` / `keylog_invalid` /
+  `attempted` / `succeeded` / `failed`. Decrypted payload bytes are
+  **never** returned in tool output regardless of state — only the
+  typed status. See the
   "TLS decryption" section in
   [`PCAP_SERVER_CONTRACT.md`](./PCAP_SERVER_CONTRACT.md) for the
   full state machine and limitations.
