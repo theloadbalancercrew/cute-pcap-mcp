@@ -31,6 +31,10 @@ delivery plan see [`ROADMAP.md`](./ROADMAP.md).
   bounded ASCII extraction, derived summaries, persisted JSON +
   Markdown artifacts, and findings. (Stable name; `analyze_pcap` is a
   one-release alias.)
+- `pcap_diagnose_symptoms` — closed-vocabulary, vendor-neutral
+  wire-level symptoms for downstream root-cause skills. Returns
+  structural counters and parser findings only; no raw payload bytes
+  or vendor interpretation.
 - `pcap_filter` — write a filtered pcap under `workspace.output_dir`
   from a tshark display filter; returns an `OutputArtifact` reference
   with kind `filtered_pcap`.
@@ -260,6 +264,110 @@ Profile findings (added to the top-level `findings[]`):
   distinct SNI count.
 - `f5_profile_http_observed` — info, summarizes HTTP request counts
   bucketed by status class.
+
+### `pcap_diagnose_symptoms`
+
+Diagnose an allowlisted pcap/pcapng into a closed vocabulary of
+vendor-neutral wire symptoms. This tool describes only what was
+observable on the wire. It does not name BIG-IP, firewall, proxy,
+cloud load balancer, or other vendor concepts, and it does not
+recommend configuration changes. Per-vendor catalogs and
+cross-domain skills consume these tokens and add interpretation in
+their own layer.
+
+Output carries `schema_version: "1.0.0"` and uses this top-level
+shape: `path`, `size_bytes`, `sha256`, `symptoms[]`, `findings[]`.
+`path`, `size_bytes`, and `sha256` are populated only after path and
+artifact validation succeeds. Every row is structural: flow tuple,
+packet counters, timing offsets, and per-symptom counters. Raw packet
+payload bytes, decrypted bytes, analyzer dumps, keys, and secrets are
+never returned.
+
+Input:
+
+- `path`: absolute or relative path to a pcap/pcapng file under an
+  allowed artifact directory. Required by the tool, validated inside
+  the handler so missing path fails closed as a typed finding.
+- `expected_sha256` / `expected_size_bytes` (optional): same external
+  artifact-reference fields documented under `pcap_validate`.
+- `scope` (optional): `src_ip`, `dst_ip`, `src_port`, `dst_port`,
+  and `protocol` (`tcp`, `udp`, or `icmp`) for flow narrowing. v1
+  symptoms are TCP-only, so non-TCP scope values simply produce no
+  v1 symptoms.
+- `symptom_filter` (optional): closed-vocabulary subset to evaluate.
+  Unknown tokens fail closed before parse work.
+
+Success output:
+
+- `schema_version`: diagnose contract version (`1.0.0`).
+- `path`, `size_bytes`, `sha256`: validated input artifact identity.
+- `symptoms[]`: closed-vocabulary symptoms. v1 codes are
+  `tls_handshake_attempted_on_plain_port`,
+  `tcp_rst_after_synack_no_app_data`,
+  `monitor_probe_returns_rst`, and
+  `asymmetric_return_path_observed`.
+- `findings[]`: parser-side state and fail-closed validation results.
+
+v1 symptom contracts:
+
+- `tls_handshake_attempted_on_plain_port`: warning/high. TLS Client
+  Hello observed, no TLS Server Hello, and the server response is
+  `rst`, `http_plaintext`, `other_plaintext`, or `none`. Evidence
+  includes `client_hello_observed`, `server_response_kind`, and
+  `tls_version_offered`.
+- `tcp_rst_after_synack_no_app_data`: warning/high. TCP three-way
+  handshake completed, then responder RST before application bytes in
+  either direction. Evidence includes `handshake_completed`,
+  `app_bytes_client_to_server`, `app_bytes_server_to_client`, and
+  `time_to_rst_ms`.
+- `monitor_probe_returns_rst`: info/medium. Short periodic
+  probe-shaped flows from the same source to the same destination
+  consistently receive RST. Evidence includes `probe_count`,
+  `probe_cadence_seconds_p50`, and `rst_ratio`.
+- `asymmetric_return_path_observed`: warning/medium. Interface-tagged
+  capture shows SYN and matching SYN ACK on different capture
+  interfaces, or SYN without the matching return leg. Evidence
+  includes `syn_seen`, `syn_ack_seen`, `interfaces_observed`, and
+  `flow_complete_via_other_interface`.
+
+Findings vocabulary:
+
+- `pcap_diagnose_flow_unparseable` — warning, parser could not
+  classify flow evidence for v1 extractors.
+- `pcap_diagnose_capture_truncated` — info, capture truncation was
+  observed by packet metadata or analyzer diagnostics.
+- `pcap_diagnose_window_too_short` — info, capture duration is below
+  the cadence window for monitor-probe symptoms; cadence symptoms are
+  skipped rather than fabricated.
+- `pcap_diagnose_parse_timeout` — warning, diagnose parsing exceeded
+  the server-side parse-time bound.
+- `pcap_diagnose_capture_lacks_interface_metadata` — info, asymmetric
+  return-path extraction is suppressed because interface metadata is
+  absent or only a single unnamed interface is visible.
+- `pcap_diagnose_unrecognized_pattern_observed` — info, reserved for
+  internal extractor matches that are not promoted to symptom tokens.
+  This is deliberately a finding, not a symptom, so hosts can keep the
+  symptom vocabulary closed.
+- `pcap_diagnose_input_invalid` — error, malformed input such as
+  missing `path`, malformed `expected_sha256`, negative
+  `expected_size_bytes`, invalid `scope`, or unknown
+  `symptom_filter`.
+- `pcap_diagnose_path_invalid` — error, path-safety or artifact-file
+  checks rejected `path` before parse work.
+- `pcap_diagnose_artifact_mismatch` — error,
+  `expected_sha256` / `expected_size_bytes` disagreed with the file on
+  disk, so parsing was refused.
+
+MCP result semantics differ intentionally from sibling tools:
+`pcap_validate`, `pcap_analyze`, `pcap_filter`, and
+`pcap_explain_connection` use `IsError=true` for their hard
+validation failures. `pcap_diagnose_symptoms` instead fails closed as
+a normal MCP result (`IsError=false`) for malformed input, unsafe
+paths, and artifact hash/size mismatches. In those responses,
+`schema_version` is populated, `symptoms` is empty, and `findings[]`
+names the typed reason. Hosts should branch on
+`findings[].code`/`severity` for diagnose failure states instead of
+expecting MCP-level errors.
 
 ### `pcap_filter`
 
