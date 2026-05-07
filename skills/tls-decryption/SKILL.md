@@ -82,8 +82,10 @@ Use host paths instead of `/work/...` for native runs.
 - `unavailable`: keylog support is not configured or the path is
   outside the keylog allowlist.
 - `keylog_missing`: the file does not exist.
-- `attempted`: the keylog was passed to tshark/Zeek without subprocess
-  errors. This does not prove decryption worked.
+- `keylog_invalid`: the file exists but contains no recognized
+  SSLKEYLOGFILE secret lines, so it was not passed to analyzers.
+- `attempted`: the keylog was validated and passed to tshark/Zeek
+  without subprocess errors. This does not prove decryption worked.
 - `failed`: tshark or Zeek errored while the keylog was applied.
 - `succeeded`: reserved for a future implementation with a reliable
   decrypted-evidence signal.

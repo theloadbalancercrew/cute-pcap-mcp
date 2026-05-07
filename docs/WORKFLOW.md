@@ -322,11 +322,16 @@ Possible response statuses (always present under
   path resolves outside it (including via symlink escape).
 - `keylog_missing` — path resolves under `keylog_dir` but no file
   exists there.
-- `attempted` — keylog applied to tshark and Zeek; the analyzers
-  ran without subprocess errors. **This does not prove any session
-  was decrypted.** TLS handshakes appear in Zeek output regardless
-  of whether a keylog matched, so the pipeline does not promote on
-  that signal alone. The limitations list documents this honestly.
+- `keylog_invalid` — path resolves under `keylog_dir`, but the file
+  contains no recognized SSLKEYLOGFILE secret lines. Blank files,
+  comment-only files, unsupported labels, non-hex material, and
+  malformed rows are not handed to analyzers.
+- `attempted` — keylog shape was validated, then applied to tshark
+  and Zeek; the analyzers ran without subprocess errors. **This does
+  not prove any session was decrypted.** TLS handshakes appear in
+  Zeek output regardless of whether a keylog matched, so the pipeline
+  does not promote on that signal alone. The limitations list
+  documents this honestly.
 - `failed` — keylog applied but a keylog-consuming analyzer
   (tshark or Zeek) returned a subprocess error. Errors from
   analyzers that did not consume the keylog (capinfos, ASCII) do
@@ -381,6 +386,7 @@ to its analyzer subprocesses.
 | `analysis_busy` | The concurrent-analyzer cap is saturated. | Retryable. Wait for an in-flight call to complete, or raise `analysis.max_concurrent_analyses`. |
 | `tls_decryption.status: unavailable` | `workspace.keylog_dir` is not configured, or `tls_keylog_path` resolves outside it. | Set `workspace.keylog_dir` and place the keylog under it; symlinks are followed before the allowlist check, so rebase the link if it points outside. |
 | `tls_decryption.status: keylog_missing` | The path resolves under `keylog_dir` but no file is present. | Check the producer wrote the file completely; verify the operator-passed path. |
+| `tls_decryption.status: keylog_invalid` | The file exists but has no recognized SSLKEYLOGFILE secret lines. | Reproduce with `SSLKEYLOGFILE` enabled before the client starts; verify the file contains non-comment `CLIENT_RANDOM` or TLS 1.3 traffic-secret rows. |
 | `tls_decryption.status: failed` | tshark or Zeek errored while the keylog was applied. | Inspect `errors[]` for the per-analyzer kind. Try the analyze pass without the keylog to confirm the analyzers themselves work. |
 
 ## Privacy reminders
