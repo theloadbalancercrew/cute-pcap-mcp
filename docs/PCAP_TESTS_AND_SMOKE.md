@@ -48,6 +48,14 @@ Locally, these tests skip when the named binaries are absent.
 | `TestExplainConnectionFiveTupleIntegration` | One-packet HTTP pcap + matching 5-tuple | The connection-scoped analyze pipeline runs, the resolved selector echo carries the constructed `display_filter`, and the `connection_evidence_scoped` finding is present. |
 | `TestExplainConnectionSelectorFailureSetsIsError` | Same pcap + frame_number=999 (absent) | A selector failure surfaces as `IsError=true` on the MCP tool result, no artifacts are persisted, and the response carries a typed error kind. |
 
+### `pcap_diagnose_symptoms`
+
+| Test | Synthetic input | Proves |
+| --- | --- | --- |
+| `TestDiagnoseSymptomFixtures` | Positive + negative fixture pair for each v1 symptom under `testdata/symptoms/<token>/` | Each closed-vocabulary symptom fires on its positive fixture, stays silent on its near-miss fixture, and emits the contracted severity / confidence / structural evidence fields without raw payload bytes. |
+| `TestDiagnoseSymptomFixtureRatchet` | Fixture corpus directory tree | Every shipped symptom token has `positive.pcap`, `negative.pcap`, `README.md`, and `generate.sh`; adding a token without paired fixtures fails the build. |
+| `TestDiagnoseFailClosedValidationResponses` / `TestDiagnoseArtifactMismatchFinding` | Bad input, unsafe path, and artifact mismatch calls | `pcap_diagnose_symptoms` returns normal diagnose output with empty `symptoms[]` plus closed-vocabulary findings for fail-closed validation paths. |
+
 ### Profile + decryption surfaces
 
 | Test | Synthetic input | Proves |

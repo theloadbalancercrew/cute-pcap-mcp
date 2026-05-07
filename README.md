@@ -429,6 +429,8 @@ Stable names (use these in new orchestration):
 - `pcap_analyze`: full analysis pipeline with capinfos, tshark, Zeek,
   bounded ASCII extraction, derived summaries, and persisted JSON +
   Markdown artifacts.
+- `pcap_diagnose_symptoms`: closed-vocabulary, vendor-neutral
+  wire-level symptoms with structural evidence only.
 - `pcap_filter`: write a filtered pcap under `workspace.output_dir`
   from a tshark display filter; returns an `OutputArtifact` reference.
 - `pcap_explain_connection`: scope the analyze pipeline to one

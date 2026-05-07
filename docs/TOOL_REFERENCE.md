@@ -31,6 +31,8 @@ delivery plan see [`ROADMAP.md`](./ROADMAP.md).
   bounded ASCII extraction, derived summaries, persisted JSON +
   Markdown artifacts, and findings. (Stable name; `analyze_pcap` is a
   one-release alias.)
+- `pcap_diagnose_symptoms` — emit closed-vocabulary,
+  vendor-neutral wire-level symptoms with structural evidence only.
 - `pcap_filter` — write a filtered pcap under `workspace.output_dir`
   from a tshark display filter; returns an `OutputArtifact` reference
   with kind `filtered_pcap`.
@@ -260,6 +262,93 @@ Profile findings (added to the top-level `findings[]`):
   distinct SNI count.
 - `f5_profile_http_observed` — info, summarizes HTTP request counts
   bucketed by status class.
+
+### `pcap_diagnose_symptoms`
+
+Emit closed-vocabulary, vendor-neutral wire-level symptoms from an
+allowlisted pcap/pcapng. This tool is for reusable packet evidence
+only. It does not name vendor concepts, recommend remediation, call
+other MCP servers, fetch device config, capture traffic, or orchestrate
+cross-domain workflows. Vendor catalogs and root-cause skills consume
+these symptoms outside this repo.
+
+Output carries no raw packet payload bytes, decrypted bodies, key
+material, arbitrary tshark/Zeek dumps, or recommendation prose.
+Evidence rows are structural: flow tuple, packet/time counters, and
+per-symptom typed counters.
+
+Input:
+
+- `path`: absolute or relative path to a pcap/pcapng file under an
+  allowed artifact directory.
+- `expected_sha256` / `expected_size_bytes` (optional): same external
+  artifact-reference fields documented under `pcap_validate`.
+- `scope` (optional): flow narrowing with `src_ip`, `dst_ip`,
+  `src_port`, `dst_port`, and `protocol` (`tcp` / `udp` / `icmp`).
+- `symptom_filter` (optional): closed-vocabulary subset of symptom
+  tokens. Unknown tokens fail closed as
+  `pcap_diagnose_input_invalid` before parse work.
+
+Output:
+
+- `schema_version`: diagnose-output contract version. Current value:
+  `1.0.0`.
+- `path`, `size_bytes`, `sha256`: populated only after path and
+  artifact validation succeeds.
+- `symptoms`: closed-vocabulary rows with `code`, `severity`,
+  `confidence`, structural `evidence`, and short vendor-neutral
+  `narrative`.
+- `findings`: closed-vocabulary parser-side state. Findings describe
+  input/path/artifact/parse limits; they are not wire symptoms.
+
+v1 symptom vocabulary:
+
+- `tls_handshake_attempted_on_plain_port` — warning/high. TLS Client
+  Hello observed, but no TLS Server Hello followed; evidence includes
+  `client_hello_observed`, `server_response_kind`, and
+  `tls_version_offered`.
+- `tcp_rst_after_synack_no_app_data` — warning/high. TCP handshake
+  completed and the responder reset before either side exchanged
+  application bytes; evidence includes `handshake_completed`,
+  `app_bytes_client_to_server`, `app_bytes_server_to_client`, and
+  `time_to_rst_ms`.
+- `monitor_probe_returns_rst` — info/medium. Repeated short,
+  probe-shaped flows to the same TCP service were reset by the
+  responder; evidence includes `probe_count`,
+  `probe_cadence_seconds_p50`, and `rst_ratio`.
+- `asymmetric_return_path_observed` — warning/medium. A TCP SYN's
+  return traffic was absent on the same capture interface, or was
+  observed on another named interface; evidence includes `syn_seen`,
+  `syn_ack_seen`, `interfaces_observed`, and
+  `flow_complete_via_other_interface`.
+
+v1 finding vocabulary:
+
+- `pcap_diagnose_flow_unparseable` — warning, one or more flows could
+  not be classified into the v1 extractors.
+- `pcap_diagnose_capture_truncated` — info, capture packet bytes were
+  truncated or tshark reported a cut-short file.
+- `pcap_diagnose_window_too_short` — info, capture duration was below
+  the cadence window needed for monitor/probe symptoms.
+- `pcap_diagnose_parse_timeout` — warning, the parse-time bound was
+  reached; emitted symptoms from partial output carry low confidence.
+- `pcap_diagnose_capture_lacks_interface_metadata` — info,
+  interface-tagging metadata was absent, so asymmetric return-path
+  symptoms are suppressed.
+- `pcap_diagnose_unrecognized_pattern_observed` — info, reserved for
+  internal extractor observations that are not promoted symptoms.
+- `pcap_diagnose_input_invalid` — error, missing/malformed input,
+  invalid scope, or unknown `symptom_filter`.
+- `pcap_diagnose_path_invalid` — error, path safety or basic artifact
+  checks rejected the path before parse work.
+- `pcap_diagnose_artifact_mismatch` — error, `expected_sha256` or
+  `expected_size_bytes` did not match the file on disk.
+
+Validation failures return a normal diagnose response with
+`schema_version`, empty `symptoms`, and an error-severity finding; they
+do not surface raw/untyped analyzer errors. The symptom and finding
+vocabularies are append-only. Additions bump the diagnose
+`schema_version` minor, while removals or renames require a major bump.
 
 ### `pcap_filter`
 

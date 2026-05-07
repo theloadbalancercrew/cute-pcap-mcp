@@ -201,6 +201,7 @@ Every tool that takes `path` also accepts the optional
 
 - `pcap_validate` / `inspect_pcap`
 - `pcap_analyze` / `analyze_pcap`
+- `pcap_diagnose_symptoms`
 - `pcap_filter`
 - `pcap_explain_connection`
 - `summarize_pcap` (legacy)
