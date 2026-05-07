@@ -346,6 +346,8 @@ Findings vocabulary:
   absent or only a single unnamed interface is visible.
 - `pcap_diagnose_unrecognized_pattern_observed` — info, reserved for
   internal extractor matches that are not promoted to symptom tokens.
+  This is deliberately a finding, not a symptom, so hosts can keep the
+  symptom vocabulary closed.
 - `pcap_diagnose_input_invalid` — error, malformed input such as
   missing `path`, malformed `expected_sha256`, negative
   `expected_size_bytes`, invalid `scope`, or unknown
@@ -356,9 +358,16 @@ Findings vocabulary:
   `expected_sha256` / `expected_size_bytes` disagreed with the file on
   disk, so parsing was refused.
 
-Fail-closed validation responses are normal diagnose outputs, not MCP
-hard errors: `schema_version` is populated, `symptoms` is empty, and
-`findings[]` names the typed reason.
+MCP result semantics differ intentionally from sibling tools:
+`pcap_validate`, `pcap_analyze`, `pcap_filter`, and
+`pcap_explain_connection` use `IsError=true` for their hard
+validation failures. `pcap_diagnose_symptoms` instead fails closed as
+a normal MCP result (`IsError=false`) for malformed input, unsafe
+paths, and artifact hash/size mismatches. In those responses,
+`schema_version` is populated, `symptoms` is empty, and `findings[]`
+names the typed reason. Hosts should branch on
+`findings[].code`/`severity` for diagnose failure states instead of
+expecting MCP-level errors.
 
 ### `pcap_filter`
 

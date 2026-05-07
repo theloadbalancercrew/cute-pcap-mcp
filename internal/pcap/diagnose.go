@@ -32,10 +32,14 @@ const (
 	FindingDiagnoseWindowTooShort         = "pcap_diagnose_window_too_short"
 	FindingDiagnoseParseTimeout           = "pcap_diagnose_parse_timeout"
 	FindingDiagnoseLacksInterfaceMetadata = "pcap_diagnose_capture_lacks_interface_metadata"
-	FindingDiagnoseUnrecognizedPattern    = "pcap_diagnose_unrecognized_pattern_observed"
-	FindingDiagnoseInputInvalid           = "pcap_diagnose_input_invalid"
-	FindingDiagnosePathInvalid            = "pcap_diagnose_path_invalid"
-	FindingDiagnoseArtifactMismatch       = "pcap_diagnose_artifact_mismatch"
+	// FindingDiagnoseUnrecognizedPattern is reserved for future
+	// extractors that have bounded structural evidence but no promoted
+	// symptom token yet. It is intentionally a finding, not a symptom,
+	// so the symptom vocabulary stays closed.
+	FindingDiagnoseUnrecognizedPattern = "pcap_diagnose_unrecognized_pattern_observed"
+	FindingDiagnoseInputInvalid        = "pcap_diagnose_input_invalid"
+	FindingDiagnosePathInvalid         = "pcap_diagnose_path_invalid"
+	FindingDiagnoseArtifactMismatch    = "pcap_diagnose_artifact_mismatch"
 )
 
 const (
@@ -347,6 +351,14 @@ func diagnoseAnalyzerFinding(err error) diagnoseFinding {
 		Code:     FindingDiagnoseFlowUnparseable,
 		Severity: "warning",
 		Detail:   boundedDiagnoseDetail("kind=" + terr.Kind),
+	}
+}
+
+func diagnoseUnrecognizedPatternFinding(detail string) diagnoseFinding {
+	return diagnoseFinding{
+		Code:     FindingDiagnoseUnrecognizedPattern,
+		Severity: "info",
+		Detail:   boundedDiagnoseDetail(detail),
 	}
 }
 

@@ -96,6 +96,22 @@ func TestDiagnoseFindingVocabularyIsClosed(t *testing.T) {
 	}
 }
 
+func TestDiagnoseUnrecognizedPatternIsFindingOnly(t *testing.T) {
+	if isDiagnoseSymptomCode(FindingDiagnoseUnrecognizedPattern) {
+		t.Fatalf("%s must not be accepted as a symptom token", FindingDiagnoseUnrecognizedPattern)
+	}
+	finding := diagnoseUnrecognizedPatternFinding("extractor=candidate_without_promoted_symptom")
+	if finding.Code != FindingDiagnoseUnrecognizedPattern {
+		t.Fatalf("Code = %q, want %q", finding.Code, FindingDiagnoseUnrecognizedPattern)
+	}
+	if finding.Severity != "info" {
+		t.Fatalf("Severity = %q, want info", finding.Severity)
+	}
+	if finding.Detail == "" {
+		t.Fatal("Detail is empty, want bounded structural detail")
+	}
+}
+
 func TestDiagnoseNarrativesStayVendorNeutral(t *testing.T) {
 	banned := []string{"bigip", "big-ip", "f5", "palo", "paloalto", "cisco", "nlb", "haproxy", "nginx"}
 	fixtures := diagnoseSyntheticFixtures()
