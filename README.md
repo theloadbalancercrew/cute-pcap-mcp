@@ -456,3 +456,7 @@ stable names above):
 `max_zeek_records_per_log`, `min_string_length`, `display_filter`,
 `include_capinfos`, `include_tshark`, `include_zeek`, `include_ascii`,
 `redact_secrets`, and `write_artifacts`.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
