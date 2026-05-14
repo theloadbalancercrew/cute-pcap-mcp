@@ -376,28 +376,47 @@ Success output:
 - `schema_version`: wire-symptom detection contract version (`1.0.0`).
 - `path`, `size_bytes`, `sha256`: validated input artifact identity.
 - `symptoms[]`: closed-vocabulary symptoms. v1 codes are
-  `tls_handshake_attempted_on_plain_port`,
+  `tls_alert_after_client_hello`,
   `tcp_rst_after_synack_no_app_data`,
-  `monitor_probe_returns_rst`, and
+  `tcp_handshake_completed_no_app_data`,
+  `tcp_repeated_short_flows_return_rst`,
+  `http_error_status_observed`, and
   `asymmetric_return_path_observed`.
+- each symptom carries `limitations[]`, an always-present list of
+  capture-boundary caveats. Hosts should surface these caveats with
+  the symptom because packet evidence alone cannot prove endpoint
+  state, listener intent, or device configuration.
 - `findings[]`: parser-side state and fail-closed validation results.
 
 v1 symptom contracts:
 
-- `tls_handshake_attempted_on_plain_port`: warning/high. TLS Client
-  Hello observed, no TLS Server Hello, and the server response is
-  `rst`, `http_plaintext`, `other_plaintext`, or `none`. Evidence
-  includes `client_hello_observed`, `server_response_kind`, and
-  `tls_version_offered`.
+- `tls_alert_after_client_hello`: warning/high. TLS Client Hello was
+  followed by a TLS alert from the peer. Evidence includes
+  `client_hello_observed`, `server_response_kind: tls_alert`,
+  `tls_version_offered`, `tls_alert_level`, and
+  `tls_alert_description`.
 - `tcp_rst_after_synack_no_app_data`: warning/high. TCP three-way
   handshake completed, then responder RST before application bytes in
   either direction. Evidence includes `handshake_completed`,
   `app_bytes_client_to_server`, `app_bytes_server_to_client`, and
   `time_to_rst_ms`.
-- `monitor_probe_returns_rst`: info/medium. Short periodic
-  probe-shaped flows from the same source to the same destination
-  consistently receive RST. Evidence includes `probe_count`,
-  `probe_cadence_seconds_p50`, and `rst_ratio`.
+- `tcp_handshake_completed_no_app_data`: info/medium. TCP three-way
+  handshake completed and no application bytes were observed before
+  the flow ended or the selected capture window moved on. Evidence
+  includes `handshake_completed`, `app_bytes_client_to_server`,
+  `app_bytes_server_to_client`, `termination_kind`, and
+  `observation_window_ms`. This token is distinct from
+  `tcp_rst_after_synack_no_app_data`: responder RST after the
+  completed handshake belongs to the RST-specific symptom.
+- `tcp_repeated_short_flows_return_rst`: info/medium. Repeated short
+  TCP flows from the same source to the same destination consistently
+  receive RST. Evidence includes `flow_count`,
+  `cadence_seconds_p50`, and `rst_ratio`.
+- `http_error_status_observed`: warning/high. HTTP response status
+  `400` or greater was observed. Evidence includes
+  `http_status_codes` and `http_error_count`. This is HTTP response
+  evidence only; it does not prove endpoint health or explain why the
+  application returned the status.
 - `asymmetric_return_path_observed`: warning/medium. Interface-tagged
   capture shows SYN and matching SYN ACK on different capture
   interfaces, or SYN without the matching return leg. Evidence
@@ -411,7 +430,7 @@ Findings vocabulary:
 - `pcap_detect_capture_truncated` — info, capture truncation was
   observed by packet metadata or analyzer diagnostics.
 - `pcap_detect_window_too_short` — info, capture duration is below
-  the cadence window for monitor-probe symptoms; cadence symptoms are
+  the cadence window for repeated short-flow symptoms; cadence symptoms are
   skipped rather than fabricated.
 - `pcap_detect_parse_timeout` — warning, symptom detection parsing exceeded
   the server-side parse-time bound.

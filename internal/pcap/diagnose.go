@@ -20,10 +20,12 @@ import (
 const DiagnoseSchemaVersion = "1.0.0"
 
 const (
-	SymptomTLSHandshakeAttemptedOnPlainPort = "tls_handshake_attempted_on_plain_port"
-	SymptomTCPRSTAfterSYNACKNoAppData       = "tcp_rst_after_synack_no_app_data"
-	SymptomMonitorProbeReturnsRST           = "monitor_probe_returns_rst"
-	SymptomAsymmetricReturnPathObserved     = "asymmetric_return_path_observed"
+	SymptomTLSAlertAfterClientHello       = "tls_alert_after_client_hello"
+	SymptomTCPRSTAfterSYNACKNoAppData     = "tcp_rst_after_synack_no_app_data"
+	SymptomTCPHandshakeCompletedNoAppData = "tcp_handshake_completed_no_app_data"
+	SymptomTCPRepeatedShortFlowsReturnRST = "tcp_repeated_short_flows_return_rst"
+	SymptomHTTPErrorStatusObserved        = "http_error_status_observed"
+	SymptomAsymmetricReturnPathObserved   = "asymmetric_return_path_observed"
 )
 
 const (
@@ -44,9 +46,9 @@ const (
 
 const (
 	diagnoseMinCadenceWindowMS = 90_000
-	diagnoseMaxProbeCadenceMS  = 30_000
-	diagnoseMaxProbePayload    = 256
-	diagnoseMinProbeCount      = 3
+	diagnoseMaxFlowCadenceMS   = 30_000
+	diagnoseMaxShortFlowBytes  = 256
+	diagnoseMinShortFlowCount  = 3
 )
 
 type diagnoseInput struct {
@@ -75,11 +77,12 @@ type diagnoseOutput struct {
 }
 
 type diagnoseSymptom struct {
-	Code       string           `json:"code"`
-	Severity   string           `json:"severity"`
-	Confidence string           `json:"confidence"`
-	Evidence   diagnoseEvidence `json:"evidence"`
-	Narrative  string           `json:"narrative"`
+	Code        string           `json:"code"`
+	Severity    string           `json:"severity"`
+	Confidence  string           `json:"confidence"`
+	Evidence    diagnoseEvidence `json:"evidence"`
+	Narrative   string           `json:"narrative"`
+	Limitations []string         `json:"limitations"`
 }
 
 type diagnoseEvidence struct {
@@ -91,13 +94,19 @@ type diagnoseEvidence struct {
 	ClientHelloObserved           *bool         `json:"client_hello_observed,omitempty"`
 	ServerResponseKind            string        `json:"server_response_kind,omitempty"`
 	TLSVersionOffered             string        `json:"tls_version_offered,omitempty"`
+	TLSAlertLevel                 string        `json:"tls_alert_level,omitempty"`
+	TLSAlertDescription           string        `json:"tls_alert_description,omitempty"`
 	HandshakeCompleted            *bool         `json:"handshake_completed,omitempty"`
 	AppBytesClientToServer        int           `json:"app_bytes_client_to_server,omitempty"`
 	AppBytesServerToClient        int           `json:"app_bytes_server_to_client,omitempty"`
 	TimeToRSTMS                   int64         `json:"time_to_rst_ms,omitempty"`
-	ProbeCount                    int           `json:"probe_count,omitempty"`
-	ProbeCadenceSecondsP50        float64       `json:"probe_cadence_seconds_p50,omitempty"`
+	TerminationKind               string        `json:"termination_kind,omitempty"`
+	ObservationWindowMS           int64         `json:"observation_window_ms,omitempty"`
+	FlowCount                     int           `json:"flow_count,omitempty"`
+	CadenceSecondsP50             float64       `json:"cadence_seconds_p50,omitempty"`
 	RSTRatio                      float64       `json:"rst_ratio,omitempty"`
+	HTTPStatusCodes               []int         `json:"http_status_codes,omitempty"`
+	HTTPErrorCount                int           `json:"http_error_count,omitempty"`
 	SYNSeen                       *bool         `json:"syn_seen,omitempty"`
 	SYNACKSeen                    *bool         `json:"syn_ack_seen,omitempty"`
 	InterfacesObserved            []string      `json:"interfaces_observed,omitempty"`
@@ -138,7 +147,10 @@ type diagnosePacket struct {
 	DataLen           int
 	TLSHandshakeTypes []int
 	TLSRecordVersion  string
+	TLSAlertLevel     string
+	TLSAlertDesc      string
 	HTTPPlaintext     bool
+	HTTPResponseCode  int
 }
 
 func (p diagnosePacket) interfaceLabel() string {
@@ -402,6 +414,8 @@ func runDiagnosePacketRows(parent context.Context, artifact ArtifactInfo, cfg co
 		"-e", "tcp.len",
 		"-e", "tls.handshake.type",
 		"-e", "tls.record.version",
+		"-e", "tls.alert_message.level",
+		"-e", "tls.alert_message.desc",
 		"-e", "http.request.method",
 		"-e", "http.response.code",
 		"-e", "data.len",
@@ -468,8 +482,11 @@ func parseDiagnosePacketRows(raw string) ([]diagnosePacket, error) {
 			TCPLen:            atoiDefault(field(19), 0),
 			TLSHandshakeTypes: parseHandshakeTypes(field(20)),
 			TLSRecordVersion:  normalizeTLSVersion(field(21)),
-			HTTPPlaintext:     field(22) != "" || field(23) != "",
-			DataLen:           atoiDefault(field(24), 0),
+			TLSAlertLevel:     normalizeTLSAlertLevel(field(22)),
+			TLSAlertDesc:      normalizeTLSAlertDescription(field(23)),
+			HTTPPlaintext:     field(24) != "" || field(25) != "",
+			HTTPResponseCode:  atoiDefault(field(25), 0),
+			DataLen:           atoiDefault(field(26), 0),
 		})
 	}
 	return packets, nil
@@ -537,6 +554,66 @@ func normalizeTLSVersion(value string) string {
 	}
 }
 
+func normalizeTLSAlertLevel(value string) string {
+	value = strings.TrimSpace(value)
+	switch value {
+	case "1":
+		return "warning"
+	case "2":
+		return "fatal"
+	default:
+		return value
+	}
+}
+
+func normalizeTLSAlertDescription(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if desc, ok := tlsAlertDescriptionNames[value]; ok {
+		return desc
+	}
+	return value
+}
+
+var tlsAlertDescriptionNames = map[string]string{
+	"0":   "close_notify",
+	"10":  "unexpected_message",
+	"20":  "bad_record_mac",
+	"21":  "decryption_failed",
+	"22":  "record_overflow",
+	"30":  "decompression_failure",
+	"40":  "handshake_failure",
+	"41":  "no_certificate",
+	"42":  "bad_certificate",
+	"43":  "unsupported_certificate",
+	"44":  "certificate_revoked",
+	"45":  "certificate_expired",
+	"46":  "certificate_unknown",
+	"47":  "illegal_parameter",
+	"48":  "unknown_ca",
+	"49":  "access_denied",
+	"50":  "decode_error",
+	"51":  "decrypt_error",
+	"60":  "export_restriction",
+	"70":  "protocol_version",
+	"71":  "insufficient_security",
+	"80":  "internal_error",
+	"86":  "inappropriate_fallback",
+	"90":  "user_canceled",
+	"100": "no_renegotiation",
+	"109": "missing_extension",
+	"110": "unsupported_extension",
+	"111": "certificate_unobtainable",
+	"112": "unrecognized_name",
+	"113": "bad_certificate_status_response",
+	"114": "bad_certificate_hash_value",
+	"115": "unknown_psk_identity",
+	"116": "certificate_required",
+	"120": "no_application_protocol",
+}
+
 func atoiDefault(value string, fallback int) int {
 	if strings.TrimSpace(value) == "" {
 		return fallback
@@ -576,8 +653,8 @@ func diagnoseSymptomsFromPackets(packets []diagnosePacket, opts diagnoseRunOptio
 		if !flowMatchesDiagnoseScope(group.flow, opts.scope) {
 			continue
 		}
-		if opts.enabled[SymptomTLSHandshakeAttemptedOnPlainPort] {
-			if symptom, ok := diagnoseTLSHandshakeAttemptedOnPlainPort(group); ok {
+		if opts.enabled[SymptomTLSAlertAfterClientHello] {
+			if symptom, ok := diagnoseTLSAlertAfterClientHello(group); ok {
 				symptoms = append(symptoms, symptom)
 			}
 		}
@@ -586,18 +663,28 @@ func diagnoseSymptomsFromPackets(packets []diagnosePacket, opts diagnoseRunOptio
 				symptoms = append(symptoms, symptom)
 			}
 		}
+		if opts.enabled[SymptomTCPHandshakeCompletedNoAppData] {
+			if symptom, ok := diagnoseTCPHandshakeCompletedNoAppData(group); ok {
+				symptoms = append(symptoms, symptom)
+			}
+		}
+		if opts.enabled[SymptomHTTPErrorStatusObserved] {
+			if symptom, ok := diagnoseHTTPErrorStatusObserved(group); ok {
+				symptoms = append(symptoms, symptom)
+			}
+		}
 	}
 
 	var findings []diagnoseFinding
-	if opts.enabled[SymptomMonitorProbeReturnsRST] {
+	if opts.enabled[SymptomTCPRepeatedShortFlowsReturnRST] {
 		if captureDurationMS(packets) < diagnoseMinCadenceWindowMS {
 			findings = append(findings, diagnoseFinding{
 				Code:     FindingDiagnoseWindowTooShort,
 				Severity: "info",
-				Detail:   "duration_ms below cadence window for monitor_probe_returns_rst",
+				Detail:   "duration_ms below cadence window for tcp_repeated_short_flows_return_rst",
 			})
 		} else {
-			symptoms = append(symptoms, diagnoseMonitorProbeReturnsRST(groups, opts.scope)...)
+			symptoms = append(symptoms, diagnoseTCPRepeatedShortFlowsReturnRST(groups, opts.scope)...)
 		}
 	}
 
@@ -740,53 +827,66 @@ func packetDirection(flow diagnoseFlow, p diagnosePacket) int {
 	return 0
 }
 
-func diagnoseTLSHandshakeAttemptedOnPlainPort(group diagnoseFlowGroup) (diagnoseSymptom, bool) {
-	var clientHello *diagnosePacket
-	serverHelloObserved := false
-	serverResponseKind := "none"
-	var response *diagnosePacket
+func symptomLimitations(code string) []string {
+	common := []string{
+		"Evidence is limited to packets visible at this capture point.",
+		"Capture contents alone cannot prove endpoint state, listener intent, or device configuration.",
+	}
+	switch code {
+	case SymptomTLSAlertAfterClientHello:
+		return append(common,
+			"TLS alert meaning depends on the peer implementation and any packets not visible in this capture.",
+		)
+	case SymptomTCPRSTAfterSYNACKNoAppData:
+		return append(common,
+			"The RST direction is packet evidence only; it does not identify why the responder reset the flow.",
+		)
+	case SymptomTCPHandshakeCompletedNoAppData:
+		return append(common,
+			"No application bytes were visible in the selected capture window; packets before or after the window may change interpretation.",
+		)
+	case SymptomTCPRepeatedShortFlowsReturnRST:
+		return append(common,
+			"Repeated short flows are shape evidence only; they do not identify the process or product that opened them.",
+		)
+	case SymptomHTTPErrorStatusObserved:
+		return append(common,
+			"HTTP status is response evidence only; it does not prove why the application returned that status.",
+		)
+	case SymptomAsymmetricReturnPathObserved:
+		return append(common,
+			"Interface metadata shows where packets were captured, not the full network path outside the capture point.",
+		)
+	default:
+		return common
+	}
+}
+
+func diagnoseTLSAlertAfterClientHello(group diagnoseFlowGroup) (diagnoseSymptom, bool) {
+	var clientHello, alert *diagnosePacket
 	for i := range group.packets {
 		p := group.packets[i]
 		dir := packetDirection(group.flow, p)
 		if dir == 1 && containsHandshakeType(p.TLSHandshakeTypes, 1) && clientHello == nil {
 			clientHello = &group.packets[i]
 		}
-		if dir == -1 && containsHandshakeType(p.TLSHandshakeTypes, 2) {
-			serverHelloObserved = true
-		}
-	}
-	if clientHello == nil || serverHelloObserved {
-		return diagnoseSymptom{}, false
-	}
-	for i := range group.packets {
-		p := group.packets[i]
-		if p.TimeMS < clientHello.TimeMS || packetDirection(group.flow, p) != -1 {
-			continue
-		}
-		switch {
-		case p.RST:
-			serverResponseKind = "rst"
-			response = &group.packets[i]
-		case p.HTTPPlaintext:
-			serverResponseKind = "http_plaintext"
-			response = &group.packets[i]
-		case p.TCPLen > 0 || p.DataLen > 0:
-			serverResponseKind = "other_plaintext"
-			response = &group.packets[i]
-		}
-		if response != nil {
+		if clientHello != nil && dir == -1 && p.TimeMS >= clientHello.TimeMS && p.TLSAlertDesc != "" {
+			alert = &group.packets[i]
 			break
 		}
+	}
+	if clientHello == nil || alert == nil {
+		return diagnoseSymptom{}, false
 	}
 
 	version := clientHello.TLSRecordVersion
 	if version == "" {
 		version = "unknown"
 	}
-	packets := packetsBetween(group.packets, clientHello, response)
+	packets := packetsBetween(group.packets, clientHello, alert)
 	trueValue := true
 	return diagnoseSymptom{
-		Code:       SymptomTLSHandshakeAttemptedOnPlainPort,
+		Code:       SymptomTLSAlertAfterClientHello,
 		Severity:   "warning",
 		Confidence: "high",
 		Evidence: diagnoseEvidence{
@@ -796,10 +896,13 @@ func diagnoseTLSHandshakeAttemptedOnPlainPort(group diagnoseFlowGroup) (diagnose
 			FirstSeenOffsetMS:   firstPacketMS(packets),
 			LastSeenOffsetMS:    lastPacketMS(packets),
 			ClientHelloObserved: &trueValue,
-			ServerResponseKind:  serverResponseKind,
+			ServerResponseKind:  "tls_alert",
 			TLSVersionOffered:   version,
+			TLSAlertLevel:       firstNonEmpty(alert.TLSAlertLevel, "unknown"),
+			TLSAlertDescription: firstNonEmpty(alert.TLSAlertDesc, "unknown"),
 		},
-		Narrative: "TLS Client Hello was observed on a flow that did not return a TLS Server Hello; the observed server response was " + serverResponseKind + ".",
+		Narrative:   "TLS Client Hello was followed by a TLS alert from the peer.",
+		Limitations: symptomLimitations(SymptomTLSAlertAfterClientHello),
 	}, true
 }
 
@@ -858,11 +961,128 @@ func diagnoseTCPRSTAfterSYNACKNoAppData(group diagnoseFlowGroup) (diagnoseSympto
 			AppBytesServerToClient: serverBytes,
 			TimeToRSTMS:            rst.TimeMS - ack.TimeMS,
 		},
-		Narrative: "TCP handshake completed and the responder sent RST before application bytes were observed in either direction.",
+		Narrative:   "TCP handshake completed and the responder sent RST before application bytes were observed in either direction.",
+		Limitations: symptomLimitations(SymptomTCPRSTAfterSYNACKNoAppData),
 	}, true
 }
 
-type diagnoseProbeGroup struct {
+func diagnoseTCPHandshakeCompletedNoAppData(group diagnoseFlowGroup) (diagnoseSymptom, bool) {
+	var syn, synack, ack, rst, fin, last *diagnosePacket
+	for i := range group.packets {
+		p := group.packets[i]
+		dir := packetDirection(group.flow, p)
+		switch {
+		case syn == nil && dir == 1 && p.SYN && !p.ACK:
+			syn = &group.packets[i]
+		case syn != nil && synack == nil && dir == -1 && p.SYN && p.ACK:
+			synack = &group.packets[i]
+		case synack != nil && ack == nil && dir == 1 && !p.SYN && p.ACK:
+			ack = &group.packets[i]
+		case ack != nil && dir != 0:
+			last = &group.packets[i]
+			if rst == nil && p.RST {
+				rst = &group.packets[i]
+			}
+			if fin == nil && p.FIN {
+				fin = &group.packets[i]
+			}
+		}
+	}
+	if syn == nil || synack == nil || ack == nil {
+		return diagnoseSymptom{}, false
+	}
+	// Keep this token distinct from tcp_rst_after_synack_no_app_data:
+	// responder RST after the completed handshake belongs to the more
+	// specific RST symptom.
+	if rst != nil && packetDirection(group.flow, *rst) == -1 {
+		return diagnoseSymptom{}, false
+	}
+
+	var clientBytes, serverBytes int
+	for _, p := range group.packets {
+		if p.TimeMS <= ack.TimeMS {
+			continue
+		}
+		switch packetDirection(group.flow, p) {
+		case 1:
+			clientBytes += p.TCPLen
+		case -1:
+			serverBytes += p.TCPLen
+		}
+	}
+	if clientBytes != 0 || serverBytes != 0 {
+		return diagnoseSymptom{}, false
+	}
+
+	end := last
+	if end == nil {
+		end = ack
+	}
+	terminationKind := "no_app_data_observed_before_capture_end"
+	if fin != nil {
+		terminationKind = "fin"
+		end = fin
+	}
+	packets := packetsBetween(group.packets, syn, end)
+	trueValue := true
+	return diagnoseSymptom{
+		Code:       SymptomTCPHandshakeCompletedNoAppData,
+		Severity:   "info",
+		Confidence: "medium",
+		Evidence: diagnoseEvidence{
+			Flow:                   &group.flow,
+			PacketCount:            len(packets),
+			PacketNumbers:          packetNumbers(packets),
+			FirstSeenOffsetMS:      firstPacketMS(packets),
+			LastSeenOffsetMS:       lastPacketMS(packets),
+			HandshakeCompleted:     &trueValue,
+			AppBytesClientToServer: clientBytes,
+			AppBytesServerToClient: serverBytes,
+			TerminationKind:        terminationKind,
+			ObservationWindowMS:    end.TimeMS - ack.TimeMS,
+		},
+		Narrative:   "TCP handshake completed, and no application bytes were observed before the flow ended or the capture window moved on.",
+		Limitations: symptomLimitations(SymptomTCPHandshakeCompletedNoAppData),
+	}, true
+}
+
+func diagnoseHTTPErrorStatusObserved(group diagnoseFlowGroup) (diagnoseSymptom, bool) {
+	var packets []diagnosePacket
+	statusSeen := map[int]bool{}
+	var statuses []int
+	for _, p := range group.packets {
+		if packetDirection(group.flow, p) != -1 || p.HTTPResponseCode < 400 {
+			continue
+		}
+		packets = append(packets, p)
+		if !statusSeen[p.HTTPResponseCode] {
+			statusSeen[p.HTTPResponseCode] = true
+			statuses = append(statuses, p.HTTPResponseCode)
+		}
+	}
+	if len(packets) == 0 {
+		return diagnoseSymptom{}, false
+	}
+	sort.Ints(statuses)
+	return diagnoseSymptom{
+		Code:       SymptomHTTPErrorStatusObserved,
+		Severity:   "warning",
+		Confidence: "high",
+		Evidence: diagnoseEvidence{
+			Flow:              &group.flow,
+			PacketCount:       len(packets),
+			PacketNumbers:     packetNumbers(packets),
+			FirstSeenOffsetMS: firstPacketMS(packets),
+			LastSeenOffsetMS:  lastPacketMS(packets),
+			HTTPStatusCodes:   statuses,
+			HTTPErrorCount:    len(packets),
+		},
+		Narrative:   "HTTP response status 400 or greater was observed on this flow.",
+		Limitations: symptomLimitations(SymptomHTTPErrorStatusObserved),
+	}, true
+}
+
+type diagnoseRepeatedShortFlowGroup struct {
 	flow       diagnoseFlow
 	startMS    []int64
 	packetNums []int
@@ -871,8 +1091,8 @@ type diagnoseProbeGroup struct {
 	maxPayload int
 }
 
-func diagnoseMonitorProbeReturnsRST(groups []diagnoseFlowGroup, scope *diagnoseScope) []diagnoseSymptom {
-	probes := map[string]*diagnoseProbeGroup{}
+func diagnoseTCPRepeatedShortFlowsReturnRST(groups []diagnoseFlowGroup, scope *diagnoseScope) []diagnoseSymptom {
+	repeated := map[string]*diagnoseRepeatedShortFlowGroup{}
 	for _, group := range groups {
 		if !flowMatchesDiagnoseScope(group.flow, scope) {
 			continue
@@ -888,10 +1108,10 @@ func diagnoseMonitorProbeReturnsRST(groups []diagnoseFlowGroup, scope *diagnoseS
 			Protocol:        group.flow.Protocol,
 		}
 		key := fmt.Sprintf("%s-%s:%d/%s", keyFlow.SourceIP, keyFlow.DestinationIP, keyFlow.DestinationPort, keyFlow.Protocol)
-		entry := probes[key]
+		entry := repeated[key]
 		if entry == nil {
-			entry = &diagnoseProbeGroup{flow: keyFlow}
-			probes[key] = entry
+			entry = &diagnoseRepeatedShortFlowGroup{flow: keyFlow}
+			repeated[key] = entry
 		}
 		entry.total++
 		entry.startMS = append(entry.startMS, start.TimeMS)
@@ -909,8 +1129,8 @@ func diagnoseMonitorProbeReturnsRST(groups []diagnoseFlowGroup, scope *diagnoseS
 	}
 
 	var symptoms []diagnoseSymptom
-	for _, entry := range probes {
-		if entry.total < diagnoseMinProbeCount || entry.maxPayload > diagnoseMaxProbePayload {
+	for _, entry := range repeated {
+		if entry.total < diagnoseMinShortFlowCount || entry.maxPayload > diagnoseMaxShortFlowBytes {
 			continue
 		}
 		ratio := float64(entry.rst) / float64(entry.total)
@@ -918,26 +1138,27 @@ func diagnoseMonitorProbeReturnsRST(groups []diagnoseFlowGroup, scope *diagnoseS
 			continue
 		}
 		cadenceMS := medianInterval(entry.startMS)
-		if cadenceMS > diagnoseMaxProbeCadenceMS {
+		if cadenceMS > diagnoseMaxFlowCadenceMS {
 			continue
 		}
 		sort.Ints(entry.packetNums)
 		entry.packetNums = uniqueInts(entry.packetNums)
 		symptoms = append(symptoms, diagnoseSymptom{
-			Code:       SymptomMonitorProbeReturnsRST,
+			Code:       SymptomTCPRepeatedShortFlowsReturnRST,
 			Severity:   "info",
 			Confidence: "medium",
 			Evidence: diagnoseEvidence{
-				Flow:                   &entry.flow,
-				PacketCount:            len(entry.packetNums),
-				PacketNumbers:          entry.packetNums,
-				FirstSeenOffsetMS:      minInt64(entry.startMS),
-				LastSeenOffsetMS:       maxInt64(entry.startMS),
-				ProbeCount:             entry.total,
-				ProbeCadenceSecondsP50: float64(cadenceMS) / 1000,
-				RSTRatio:               ratio,
+				Flow:              &entry.flow,
+				PacketCount:       len(entry.packetNums),
+				PacketNumbers:     entry.packetNums,
+				FirstSeenOffsetMS: minInt64(entry.startMS),
+				LastSeenOffsetMS:  maxInt64(entry.startMS),
+				FlowCount:         entry.total,
+				CadenceSecondsP50: float64(cadenceMS) / 1000,
+				RSTRatio:          ratio,
 			},
-			Narrative: "Short periodic probe-shaped flows from the same source to the same destination consistently received TCP RST responses.",
+			Narrative:   "Repeated short TCP flows from the same source to the same destination consistently received TCP RST responses.",
+			Limitations: symptomLimitations(SymptomTCPRepeatedShortFlowsReturnRST),
 		})
 	}
 	return symptoms
@@ -978,7 +1199,8 @@ func diagnoseAsymmetricReturnPathObserved(groups []diagnoseFlowGroup, scope *dia
 					InterfacesObserved:            flowInterfaces(group.packets),
 					FlowCompleteViaOtherInterface: &falseValue,
 				},
-				Narrative: "TCP SYN was observed with interface metadata, but the matching SYN ACK was not observed in this capture.",
+				Narrative:   "TCP SYN was observed with interface metadata, but the matching SYN ACK was not observed in this capture.",
+				Limitations: symptomLimitations(SymptomAsymmetricReturnPathObserved),
 			})
 			continue
 		}
@@ -1010,7 +1232,8 @@ func diagnoseAsymmetricReturnPathObserved(groups []diagnoseFlowGroup, scope *dia
 				InterfacesObserved:            flowInterfaces(group.packets),
 				FlowCompleteViaOtherInterface: &trueValue,
 			},
-			Narrative: "TCP SYN and matching SYN ACK were observed on different capture interfaces for the same flow.",
+			Narrative:   "TCP SYN and matching SYN ACK were observed on different capture interfaces for the same flow.",
+			Limitations: symptomLimitations(SymptomAsymmetricReturnPathObserved),
 		})
 	}
 	return symptoms
@@ -1263,9 +1486,11 @@ func isDiagnoseSymptomCode(token string) bool {
 
 func diagnoseSymptomCodes() []string {
 	return []string{
-		SymptomTLSHandshakeAttemptedOnPlainPort,
+		SymptomTLSAlertAfterClientHello,
 		SymptomTCPRSTAfterSYNACKNoAppData,
-		SymptomMonitorProbeReturnsRST,
+		SymptomTCPHandshakeCompletedNoAppData,
+		SymptomTCPRepeatedShortFlowsReturnRST,
+		SymptomHTTPErrorStatusObserved,
 		SymptomAsymmetricReturnPathObserved,
 	}
 }
