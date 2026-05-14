@@ -263,12 +263,12 @@ func analyzeArtifact(ctx context.Context, artifact ArtifactInfo, cfg config.Conf
 			// bailing on the truncation. Parse what we have and surface
 			// a typed warning so the host knows the source pcap was
 			// cut short.
-			if summary := parseCapinfos(capinfosStdout); summary != nil {
+			if summary := captureSummaryFromCapinfos(capinfosStdout, artifact); summary != nil {
 				out.CaptureSummary = summary
 			}
 			truncationWarnings = append(truncationWarnings, truncationFinding("capinfos", capinfosStderr))
 		default:
-			if summary := parseCapinfos(capinfosStdout); summary != nil {
+			if summary := captureSummaryFromCapinfos(capinfosStdout, artifact); summary != nil {
 				out.CaptureSummary = summary
 			}
 		}
