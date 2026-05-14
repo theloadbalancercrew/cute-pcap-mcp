@@ -27,19 +27,19 @@ const (
 )
 
 const (
-	FindingDiagnoseFlowUnparseable        = "pcap_diagnose_flow_unparseable"
-	FindingDiagnoseCaptureTruncated       = "pcap_diagnose_capture_truncated"
-	FindingDiagnoseWindowTooShort         = "pcap_diagnose_window_too_short"
-	FindingDiagnoseParseTimeout           = "pcap_diagnose_parse_timeout"
-	FindingDiagnoseLacksInterfaceMetadata = "pcap_diagnose_capture_lacks_interface_metadata"
+	FindingDiagnoseFlowUnparseable        = "pcap_detect_flow_unparseable"
+	FindingDiagnoseCaptureTruncated       = "pcap_detect_capture_truncated"
+	FindingDiagnoseWindowTooShort         = "pcap_detect_window_too_short"
+	FindingDiagnoseParseTimeout           = "pcap_detect_parse_timeout"
+	FindingDiagnoseLacksInterfaceMetadata = "pcap_detect_capture_lacks_interface_metadata"
 	// FindingDiagnoseUnrecognizedPattern is reserved for future
 	// extractors that have bounded structural evidence but no promoted
 	// symptom token yet. It is intentionally a finding, not a symptom,
 	// so the symptom vocabulary stays closed.
-	FindingDiagnoseUnrecognizedPattern = "pcap_diagnose_unrecognized_pattern_observed"
-	FindingDiagnoseInputInvalid        = "pcap_diagnose_input_invalid"
-	FindingDiagnosePathInvalid         = "pcap_diagnose_path_invalid"
-	FindingDiagnoseArtifactMismatch    = "pcap_diagnose_artifact_mismatch"
+	FindingDiagnoseUnrecognizedPattern = "pcap_detect_unrecognized_pattern_observed"
+	FindingDiagnoseInputInvalid        = "pcap_detect_input_invalid"
+	FindingDiagnosePathInvalid         = "pcap_detect_path_invalid"
+	FindingDiagnoseArtifactMismatch    = "pcap_detect_artifact_mismatch"
 )
 
 const (

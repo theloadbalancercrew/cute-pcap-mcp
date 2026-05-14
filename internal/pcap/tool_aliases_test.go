@@ -19,7 +19,7 @@ func TestServerRegistersStableAndLegacyToolNames(t *testing.T) {
 		"inspect_pcap",
 		"pcap_analyze",
 		"pcap_analyzer_status",
-		"pcap_diagnose_symptoms",
+		"pcap_detect_symptoms",
 		"pcap_explain_connection",
 		"pcap_filter",
 		"pcap_validate",
