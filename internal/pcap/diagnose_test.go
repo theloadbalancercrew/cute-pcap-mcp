@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -112,8 +113,11 @@ func TestDiagnoseUnrecognizedPatternIsFindingOnly(t *testing.T) {
 	}
 }
 
-func TestDiagnoseNarrativesStayVendorNeutral(t *testing.T) {
-	banned := []string{"bigip", "big-ip", "f5", "palo", "paloalto", "cisco", "nlb", "haproxy", "nginx"}
+func TestDiagnoseNarrativesStayVendorNeutralAndObservableOnly(t *testing.T) {
+	banned := []string{
+		"bigip", "big-ip", "f5", "palo", "paloalto", "cisco", "nlb", "haproxy", "nginx",
+		"root cause", "caused by", "misconfigured", "down", "closed", "monitor", "plain port",
+	}
 	fixtures := diagnoseSyntheticFixtures()
 	for _, code := range diagnoseSymptomCodes() {
 		symptoms, _ := diagnoseSymptomsFromPackets(fixtures[code].positive, diagnoseRunOptions{
@@ -132,9 +136,27 @@ func TestDiagnoseNarrativesStayVendorNeutral(t *testing.T) {
 	}
 }
 
+func TestDetectSymptomsDocsAvoidRootCauseClaimsAndOldNames(t *testing.T) {
+	section := toolReferenceSection(t, "pcap_detect_symptoms")
+	for _, forbidden := range []string{
+		"pcap_diagnose_symptoms",
+		"tls_handshake_attempted_on_plain_port",
+		"monitor_probe_returns_rst",
+		"root cause is",
+		"caused by",
+		"misconfigured",
+		"server is down",
+		"port is closed",
+	} {
+		if strings.Contains(strings.ToLower(section), forbidden) {
+			t.Fatalf("pcap_detect_symptoms docs contain forbidden phrase %q", forbidden)
+		}
+	}
+}
+
 func TestDiagnoseOutputDoesNotExposeRawPayloadBytes(t *testing.T) {
-	symptoms, findings := diagnoseSymptomsFromPackets(diagnoseSyntheticFixtures()[SymptomTLSHandshakeAttemptedOnPlainPort].positive, diagnoseRunOptions{
-		enabled: map[string]bool{SymptomTLSHandshakeAttemptedOnPlainPort: true},
+	symptoms, findings := diagnoseSymptomsFromPackets(diagnoseSyntheticFixtures()[SymptomTLSAlertAfterClientHello].positive, diagnoseRunOptions{
+		enabled: map[string]bool{SymptomTLSAlertAfterClientHello: true},
 	})
 	out := diagnoseOutput{
 		SchemaVersion: DiagnoseSchemaVersion,
@@ -358,17 +380,25 @@ type diagnoseFixturePair struct {
 
 func diagnoseSyntheticFixtures() map[string]diagnoseFixturePair {
 	return map[string]diagnoseFixturePair{
-		SymptomTLSHandshakeAttemptedOnPlainPort: {
-			positive: tlsPlainPortPositive(),
-			negative: tlsPlainPortNegative(),
+		SymptomTLSAlertAfterClientHello: {
+			positive: tlsAlertAfterClientHelloPositive(),
+			negative: tlsAlertAfterClientHelloNegative(),
 		},
 		SymptomTCPRSTAfterSYNACKNoAppData: {
 			positive: rstAfterSynackPositive(),
 			negative: rstAfterSynackNegative(),
 		},
-		SymptomMonitorProbeReturnsRST: {
-			positive: monitorProbeRSTPositive(),
-			negative: monitorProbeRSTNegative(),
+		SymptomTCPHandshakeCompletedNoAppData: {
+			positive: handshakeCompletedNoAppDataPositive(),
+			negative: handshakeCompletedNoAppDataNegative(),
+		},
+		SymptomTCPRepeatedShortFlowsReturnRST: {
+			positive: repeatedShortFlowsRSTPositive(),
+			negative: repeatedShortFlowsRSTNegative(),
+		},
+		SymptomHTTPErrorStatusObserved: {
+			positive: httpErrorStatusPositive(),
+			negative: httpErrorStatusNegative(),
 		},
 		SymptomAsymmetricReturnPathObserved: {
 			positive: asymmetricReturnPathPositive(),
@@ -377,17 +407,17 @@ func diagnoseSyntheticFixtures() map[string]diagnoseFixturePair {
 	}
 }
 
-func tlsPlainPortPositive() []diagnosePacket {
+func tlsAlertAfterClientHelloPositive() []diagnosePacket {
 	return []diagnosePacket{
 		diagPkt(1, 0, "", "192.0.2.10", 50000, "198.51.100.20", 80, "S", 0),
 		diagPkt(2, 10, "", "198.51.100.20", 80, "192.0.2.10", 50000, "SA", 0),
 		diagPkt(3, 20, "", "192.0.2.10", 50000, "198.51.100.20", 80, "A", 0),
 		withTLSClientHello(diagPkt(4, 30, "", "192.0.2.10", 50000, "198.51.100.20", 80, "A", 120)),
-		diagPkt(5, 40, "", "198.51.100.20", 80, "192.0.2.10", 50000, "R", 0),
+		withTLSAlert(diagPkt(5, 40, "", "198.51.100.20", 80, "192.0.2.10", 50000, "A", 7), "fatal", "handshake_failure"),
 	}
 }
 
-func tlsPlainPortNegative() []diagnosePacket {
+func tlsAlertAfterClientHelloNegative() []diagnosePacket {
 	return []diagnosePacket{
 		diagPkt(1, 0, "", "192.0.2.10", 50000, "198.51.100.20", 443, "S", 0),
 		diagPkt(2, 10, "", "198.51.100.20", 443, "192.0.2.10", 50000, "SA", 0),
@@ -416,7 +446,27 @@ func rstAfterSynackNegative() []diagnosePacket {
 	}
 }
 
-func monitorProbeRSTPositive() []diagnosePacket {
+func handshakeCompletedNoAppDataPositive() []diagnosePacket {
+	return []diagnosePacket{
+		diagPkt(1, 0, "", "192.0.2.11", 50002, "198.51.100.21", 8443, "S", 0),
+		diagPkt(2, 10, "", "198.51.100.21", 8443, "192.0.2.11", 50002, "SA", 0),
+		diagPkt(3, 20, "", "192.0.2.11", 50002, "198.51.100.21", 8443, "A", 0),
+		diagPkt(4, 200, "", "192.0.2.11", 50002, "198.51.100.21", 8443, "FA", 0),
+		diagPkt(5, 210, "", "198.51.100.21", 8443, "192.0.2.11", 50002, "FA", 0),
+	}
+}
+
+func handshakeCompletedNoAppDataNegative() []diagnosePacket {
+	return []diagnosePacket{
+		diagPkt(1, 0, "", "192.0.2.11", 50002, "198.51.100.21", 8443, "S", 0),
+		diagPkt(2, 10, "", "198.51.100.21", 8443, "192.0.2.11", 50002, "SA", 0),
+		diagPkt(3, 20, "", "192.0.2.11", 50002, "198.51.100.21", 8443, "A", 0),
+		diagPkt(4, 40, "", "192.0.2.11", 50002, "198.51.100.21", 8443, "PA", 32),
+		diagPkt(5, 200, "", "192.0.2.11", 50002, "198.51.100.21", 8443, "FA", 0),
+	}
+}
+
+func repeatedShortFlowsRSTPositive() []diagnosePacket {
 	var packets []diagnosePacket
 	num := 1
 	for i, ms := range []int64{0, 30_000, 60_000, 90_000} {
@@ -430,7 +480,7 @@ func monitorProbeRSTPositive() []diagnosePacket {
 	return packets
 }
 
-func monitorProbeRSTNegative() []diagnosePacket {
+func repeatedShortFlowsRSTNegative() []diagnosePacket {
 	return []diagnosePacket{
 		diagPkt(1, 0, "", "192.0.2.30", 51000, "198.51.100.40", 8080, "S", 0),
 		diagPkt(2, 10, "", "198.51.100.40", 8080, "192.0.2.30", 51000, "R", 0),
@@ -440,6 +490,26 @@ func monitorProbeRSTNegative() []diagnosePacket {
 		diagPkt(6, 80_010, "", "198.51.100.40", 8080, "192.0.2.30", 51002, "R", 0),
 		diagPkt(7, 120_000, "", "192.0.2.30", 51003, "198.51.100.40", 8080, "S", 0),
 		diagPkt(8, 120_010, "", "198.51.100.40", 8080, "192.0.2.30", 51003, "R", 0),
+	}
+}
+
+func httpErrorStatusPositive() []diagnosePacket {
+	return []diagnosePacket{
+		diagPkt(1, 0, "", "192.0.2.70", 53000, "198.51.100.80", 80, "S", 0),
+		diagPkt(2, 10, "", "198.51.100.80", 80, "192.0.2.70", 53000, "SA", 0),
+		diagPkt(3, 20, "", "192.0.2.70", 53000, "198.51.100.80", 80, "A", 0),
+		withHTTPRequest(diagPkt(4, 30, "", "192.0.2.70", 53000, "198.51.100.80", 80, "PA", 64)),
+		withHTTPStatus(diagPkt(5, 45, "", "198.51.100.80", 80, "192.0.2.70", 53000, "PA", 128), 503),
+	}
+}
+
+func httpErrorStatusNegative() []diagnosePacket {
+	return []diagnosePacket{
+		diagPkt(1, 0, "", "192.0.2.70", 53000, "198.51.100.80", 80, "S", 0),
+		diagPkt(2, 10, "", "198.51.100.80", 80, "192.0.2.70", 53000, "SA", 0),
+		diagPkt(3, 20, "", "192.0.2.70", 53000, "198.51.100.80", 80, "A", 0),
+		withHTTPRequest(diagPkt(4, 30, "", "192.0.2.70", 53000, "198.51.100.80", 80, "PA", 64)),
+		withHTTPStatus(diagPkt(5, 45, "", "198.51.100.80", 80, "192.0.2.70", 53000, "PA", 128), 200),
 	}
 }
 
@@ -481,9 +551,26 @@ func withTLSClientHello(packet diagnosePacket) diagnosePacket {
 	return packet
 }
 
+func withTLSAlert(packet diagnosePacket, level, desc string) diagnosePacket {
+	packet.TLSAlertLevel = level
+	packet.TLSAlertDesc = desc
+	return packet
+}
+
 func withTLSServerHello(packet diagnosePacket) diagnosePacket {
 	packet.TLSHandshakeTypes = []int{2}
 	packet.TLSRecordVersion = "TLS1.2"
+	return packet
+}
+
+func withHTTPRequest(packet diagnosePacket) diagnosePacket {
+	packet.HTTPPlaintext = true
+	return packet
+}
+
+func withHTTPStatus(packet diagnosePacket, status int) diagnosePacket {
+	packet.HTTPPlaintext = true
+	packet.HTTPResponseCode = status
 	return packet
 }
 
@@ -507,19 +594,25 @@ func assertDiagnoseContract(t *testing.T, symptom diagnoseSymptom) {
 	if len(symptom.Evidence.PacketNumbers) == 0 {
 		t.Fatalf("%s evidence.packet_numbers empty", symptom.Code)
 	}
+	if len(symptom.Limitations) == 0 {
+		t.Fatalf("%s limitations empty", symptom.Code)
+	}
 	switch symptom.Code {
-	case SymptomTLSHandshakeAttemptedOnPlainPort:
+	case SymptomTLSAlertAfterClientHello:
 		if symptom.Severity != "warning" || symptom.Confidence != "high" {
 			t.Fatalf("severity/confidence = %s/%s, want warning/high", symptom.Severity, symptom.Confidence)
 		}
 		if symptom.Evidence.ClientHelloObserved == nil || !*symptom.Evidence.ClientHelloObserved {
 			t.Fatalf("client_hello_observed = %v, want true", symptom.Evidence.ClientHelloObserved)
 		}
-		if symptom.Evidence.ServerResponseKind != "rst" {
-			t.Fatalf("server_response_kind = %q, want rst", symptom.Evidence.ServerResponseKind)
+		if symptom.Evidence.ServerResponseKind != "tls_alert" {
+			t.Fatalf("server_response_kind = %q, want tls_alert", symptom.Evidence.ServerResponseKind)
 		}
 		if symptom.Evidence.TLSVersionOffered != "TLS1.2" {
 			t.Fatalf("tls_version_offered = %q, want TLS1.2", symptom.Evidence.TLSVersionOffered)
+		}
+		if symptom.Evidence.TLSAlertLevel != "fatal" || symptom.Evidence.TLSAlertDescription != "handshake_failure" {
+			t.Fatalf("tls alert = %q/%q, want fatal/handshake_failure", symptom.Evidence.TLSAlertLevel, symptom.Evidence.TLSAlertDescription)
 		}
 	case SymptomTCPRSTAfterSYNACKNoAppData:
 		if symptom.Severity != "warning" || symptom.Confidence != "high" {
@@ -534,18 +627,41 @@ func assertDiagnoseContract(t *testing.T, symptom diagnoseSymptom) {
 		if symptom.Evidence.TimeToRSTMS <= 0 {
 			t.Fatalf("time_to_rst_ms = %d, want > 0", symptom.Evidence.TimeToRSTMS)
 		}
-	case SymptomMonitorProbeReturnsRST:
+	case SymptomTCPHandshakeCompletedNoAppData:
 		if symptom.Severity != "info" || symptom.Confidence != "medium" {
 			t.Fatalf("severity/confidence = %s/%s, want info/medium", symptom.Severity, symptom.Confidence)
 		}
-		if symptom.Evidence.ProbeCount < diagnoseMinProbeCount {
-			t.Fatalf("probe_count = %d, want >= %d", symptom.Evidence.ProbeCount, diagnoseMinProbeCount)
+		if symptom.Evidence.HandshakeCompleted == nil || !*symptom.Evidence.HandshakeCompleted {
+			t.Fatalf("handshake_completed = %v, want true", symptom.Evidence.HandshakeCompleted)
 		}
-		if symptom.Evidence.ProbeCadenceSecondsP50 > 30 {
-			t.Fatalf("probe_cadence_seconds_p50 = %f, want <= 30", symptom.Evidence.ProbeCadenceSecondsP50)
+		if symptom.Evidence.AppBytesClientToServer != 0 || symptom.Evidence.AppBytesServerToClient != 0 {
+			t.Fatalf("app bytes = %d/%d, want 0/0", symptom.Evidence.AppBytesClientToServer, symptom.Evidence.AppBytesServerToClient)
+		}
+		if symptom.Evidence.TerminationKind != "fin" {
+			t.Fatalf("termination_kind = %q, want fin", symptom.Evidence.TerminationKind)
+		}
+	case SymptomTCPRepeatedShortFlowsReturnRST:
+		if symptom.Severity != "info" || symptom.Confidence != "medium" {
+			t.Fatalf("severity/confidence = %s/%s, want info/medium", symptom.Severity, symptom.Confidence)
+		}
+		if symptom.Evidence.FlowCount < diagnoseMinShortFlowCount {
+			t.Fatalf("flow_count = %d, want >= %d", symptom.Evidence.FlowCount, diagnoseMinShortFlowCount)
+		}
+		if symptom.Evidence.CadenceSecondsP50 > 30 {
+			t.Fatalf("cadence_seconds_p50 = %f, want <= 30", symptom.Evidence.CadenceSecondsP50)
 		}
 		if symptom.Evidence.RSTRatio < 0.9 {
 			t.Fatalf("rst_ratio = %f, want >= 0.9", symptom.Evidence.RSTRatio)
+		}
+	case SymptomHTTPErrorStatusObserved:
+		if symptom.Severity != "warning" || symptom.Confidence != "high" {
+			t.Fatalf("severity/confidence = %s/%s, want warning/high", symptom.Severity, symptom.Confidence)
+		}
+		if got, want := symptom.Evidence.HTTPStatusCodes, []int{503}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("http_status_codes = %v, want %v", got, want)
+		}
+		if symptom.Evidence.HTTPErrorCount != 1 {
+			t.Fatalf("http_error_count = %d, want 1", symptom.Evidence.HTTPErrorCount)
 		}
 	case SymptomAsymmetricReturnPathObserved:
 		if symptom.Severity != "warning" || symptom.Confidence != "medium" {
@@ -604,4 +720,20 @@ func diagnoseFindingsContain(findings []diagnoseFinding, code string) bool {
 		}
 	}
 	return false
+}
+
+func toolReferenceSection(t *testing.T, toolName string) string {
+	t.Helper()
+	src := readToolReference(t)
+	startMarker := "### `" + toolName + "`"
+	start := strings.Index(src, startMarker)
+	if start == -1 {
+		t.Fatalf("TOOL_REFERENCE.md missing section %s", startMarker)
+	}
+	rest := src[start+len(startMarker):]
+	end := strings.Index(rest, "\n### `")
+	if end == -1 {
+		return rest
+	}
+	return rest[:end]
 }

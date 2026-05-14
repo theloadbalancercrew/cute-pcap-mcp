@@ -21,10 +21,10 @@ For nuanced conclusion language or conflicting evidence, read
 3. Run `pcap_validate` before analysis.
 4. For packet-shape questions, run `pcap_detect_symptoms` to collect
    vendor-neutral wire symptoms. Treat tokens such as
-   `monitor_probe_returns_rst`, `tcp_rst_after_synack_no_app_data`, or
-   missing return traffic as observations at the capture point, not as
-   proof that a server is down, a port is closed, or a device is
-   misconfigured.
+   `tcp_repeated_short_flows_return_rst`,
+   `tcp_rst_after_synack_no_app_data`, `tls_alert_after_client_hello`,
+   or missing return traffic as observations at the capture point, not
+   as proof of endpoint state or device configuration.
 5. Run `pcap_analyze` with bounded rows. Start with:
    - `max_packet_rows: 50`
    - `max_zeek_records_per_log: 100`
@@ -42,7 +42,7 @@ For nuanced conclusion language or conflicting evidence, read
   timestamps, status codes, reset direction, SNI, DNS names.
 - Do not call something "the cause" unless the capture proves causality.
   Use "consistent with" for weaker claims.
-- Use PCAP symptom tokens as packet evidence only. A repeated probe
+- Use PCAP symptom tokens as packet evidence only. A repeated short flow
   ending in RST or no response is the end of the observed TCP
   conversation, not by itself a conclusion about endpoint health or
   configuration.

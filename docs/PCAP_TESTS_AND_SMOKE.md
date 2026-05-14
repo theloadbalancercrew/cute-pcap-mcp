@@ -98,13 +98,14 @@ helper. The full set lives in `internal/pcap/*_test.go` and
   keeping `docs/TOOL_REFERENCE.md` aligned with the registered
   tool surface.
 - `TestDiagnoseV1SymptomContracts` /
-  `TestDiagnoseFixtureRegistryCoversClosedVocabulary` — pin the four
+  `TestDiagnoseFixtureRegistryCoversClosedVocabulary` — pin the six
   v1 closed-vocabulary wire symptoms and their positive/negative
   synthetic packet-row fixtures.
 - `TestDiagnoseFailClosedValidationResponses` — pins that malformed
   symptom-detection input, path rejection, and artifact mismatch return
   normal outputs with empty `symptoms[]` and typed findings.
-- `TestDiagnoseNarrativesStayVendorNeutral` /
+- `TestDiagnoseNarrativesStayVendorNeutralAndObservableOnly` /
+  `TestDetectSymptomsDocsAvoidRootCauseClaimsAndOldNames` /
   `TestDiagnoseOutputDoesNotExposeRawPayloadBytes` — pin the
   vendor-neutral and no-raw-payload boundaries for the detection
   surface.
