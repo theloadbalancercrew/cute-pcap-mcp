@@ -182,6 +182,43 @@ the server reports its own values back. **Producers MUST NOT
 embed the file's bytes** in the reference; pcap bytes never enter
 MCP input.
 
+## Artifact inventory
+
+`list_pcap_artifacts` is the one server-owned discovery surface for
+already-present pcap/pcapng inputs. It lists metadata for entries under
+the configured input allowlist only; it does not capture traffic, copy
+files, call another MCP server, or run packet analyzers.
+
+Inventory output intentionally returns the same resolved absolute
+`path` shape that the path-taking tools accept. That path is private
+artifact metadata scoped to the configured allowlist. The inventory
+never returns packet bytes, raw analyzer output, decrypted payloads, or
+arbitrary host filesystem listings.
+
+The tool is bounded independently of response size:
+
+- `limit` defaults to `10` and has a hard maximum of `10`.
+- each call has a hard scan-entry budget; if the budget is reached,
+  the response sets `truncated: true`, `scan_status:
+  scan_budget_reached`, and includes `next_cursor`.
+- each call has a cumulative hash byte budget. Entries whose SHA-256
+  cannot be computed within that budget still return file metadata
+  with `hash_status: omitted` and an `omitted_reasons` token such as
+  `hash_budget_reached`.
+- `next_cursor` appears only when `truncated` is `true`. It is an
+  opaque, versioned, base64url token over the last scanned key
+  (`root_index` plus allowlist-relative path). Cursors are opaque but
+  not secret; clients must not parse them. Because the cursor records
+  the last scanned key rather than the last returned artifact, skipped
+  bad entries are not repeated after a scan-budget page.
+
+Per-artifact filesystem problems are fail-soft. A symlink escape,
+unreadable file, too-large pcap, vanished file, or non-regular
+`.pcap` path increments a grouped `skips[]` reason/count and does not
+fail the whole inventory call. Whole-tool errors are reserved for
+caller input problems such as an out-of-range `limit` or malformed
+`cursor`.
+
 ### What this server explicitly does NOT do
 
 - No capture acquisition (`tcpdump`, appliance packet capture, port

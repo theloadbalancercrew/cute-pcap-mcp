@@ -461,17 +461,15 @@ In Claude or Codex, ask:
 
 ```text
 Use cute-pcap-mcp to run pcap_analyzer_status.
-Then validate the capture path for my runtime:
-- Docker: /work/pcaps/sample.pcap
-- Native macOS: /Users/you/mcp-work/pcaps/sample.pcap
-Then analyze it with max_packet_rows=50 and write_artifacts=true.
+Then run list_pcap_artifacts.
+Validate the returned sample capture path, then analyze it with max_packet_rows=50 and write_artifacts=true.
 Summarize only packet evidence returned by the tool; do not guess.
 ```
 
 For Docker on Windows, still use the container path in the prompt:
 
 ```text
-Validate /work/pcaps/sample.pcap, then analyze it.
+Run list_pcap_artifacts, validate /work/pcaps/sample.pcap if it appears, then analyze it.
 ```
 
 The server normalizes and allowlist-checks paths before analysis.

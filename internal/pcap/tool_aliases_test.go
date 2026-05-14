@@ -17,6 +17,7 @@ func TestServerRegistersStableAndLegacyToolNames(t *testing.T) {
 		"analyze_pcap",
 		"get_server_info",
 		"inspect_pcap",
+		"list_pcap_artifacts",
 		"pcap_analyze",
 		"pcap_analyzer_status",
 		"pcap_detect_symptoms",

@@ -21,6 +21,10 @@ delivery plan see [`ROADMAP.md`](./ROADMAP.md).
 
 - `pcap_validate` — validate an allowlisted pcap and return artifact
   metadata. (Stable name; `inspect_pcap` is a one-release alias.)
+- `list_pcap_artifacts` — list a bounded metadata-only inventory of
+  pcap/pcapng artifacts under configured allowlisted roots. Returns
+  artifact paths and safe file metadata only; no packet bytes or
+  analyzer output.
 - `pcap_analyzer_status` — report local availability and versions of
   `capinfos`, `tshark`, and `zeek`.
 - `get_server_info` — read-only build/runtime metadata for this MCP
@@ -104,6 +108,74 @@ Tool errors:
   value is never reflected back.
 - `size_mismatch` — a non-negative `expected_size_bytes` does not
   equal the actual size. Carries `field: expected_size_bytes`.
+
+### `list_pcap_artifacts`
+
+List a bounded metadata-only inventory of `.pcap` and `.pcapng`
+artifacts under the configured allowlisted roots
+(`allowed_artifact_dirs`, including `workspace.pcap_dir` when set).
+This tool runs no analyzers, performs no capture acquisition, and
+does not verify packet format magic bytes; use `pcap_validate` for
+validation of a specific returned path.
+
+The returned `path` is the same resolved absolute path shape consumed
+by the path-taking tools in this server. This intentionally exposes
+allowlisted artifact paths as private artifact metadata. Packet bytes,
+raw analyzer output, and arbitrary filesystem listings are never
+returned.
+
+Input:
+
+- `limit` (optional): maximum artifact entries to return. Default
+  `10`; hard maximum `10`.
+- `cursor` (optional): opaque cursor from a prior truncated response.
+  Cursors are versioned and base64url-encoded. They are opaque, not
+  secret; callers must not parse or depend on their internal shape.
+
+Success output:
+
+- `artifacts`: list of metadata entries:
+  - `path`: resolved absolute path under the configured allowlist.
+  - `basename`: base filename for display.
+  - `size_bytes`: file size from `stat`.
+  - `sha256` (optional): present only when computed within the
+    inventory hash budget.
+  - `hash_status`: `computed` or `omitted`.
+  - `omitted_reasons`: currently `hash_budget_reached` or
+    `hash_unavailable` when `hash_status` is `omitted`.
+  - `modified_at`: file modification time in RFC3339 UTC form.
+  - `content_type`: extension-derived only:
+    `.pcap` → `application/vnd.tcpdump.pcap`, `.pcapng` →
+    `application/x-pcapng`.
+- `count`: number of artifact entries returned.
+- `limit`: effective limit used for this call.
+- `truncated`: `true` when the server stopped before an exhaustive
+  scan, either because `limit` was reached or because the scan budget
+  was reached.
+- `next_cursor`: present only when `truncated` is `true`. The cursor
+  records the last scanned key, not merely the last returned artifact,
+  so skipped/bad entries are not repeated on the next page.
+- `scan_status`: `complete`, `page_limit_reached`, or
+  `scan_budget_reached`.
+- `scan_budget_entries`, `hash_budget_bytes`, `hash_bytes_used`:
+  inventory-level resource budget metadata.
+- `skips`: bounded grouped counts for fail-soft per-entry skips. Skip
+  reasons may include `path_outside_allowlist`,
+  `artifact_not_regular_file`, `artifact_not_found`, `pcap_too_large`,
+  and `artifact_inaccessible`. Skip records do not include the skipped
+  path.
+
+Tool errors:
+
+- `validation_failed` — `limit` is outside `[1, 10]`, `cursor` is too
+  long, contains NUL bytes, is malformed, has an unsupported version,
+  or no longer matches the configured allowlist shape. Cursor failures
+  carry `field: cursor`; limit failures carry `field: limit`.
+
+Per-artifact filesystem problems are fail-soft and reported in
+`skips[]` rather than as whole-tool errors. A bad symlink, unreadable
+file, too-large pcap, or non-regular `.pcap` entry beside a good pcap
+does not prevent the good entry from being returned.
 
 ### `pcap_analyze`
 
