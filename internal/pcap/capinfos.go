@@ -31,8 +31,6 @@ func parseCapinfos(raw string) *CaptureSummary {
 		switch key {
 		case "number of packets":
 			summary.PacketCount = parseLeadingInt64(value)
-		case "file size":
-			summary.FileSizeBytes = parseLeadingInt64(value)
 		case "capture duration":
 			summary.DurationSeconds = parseLeadingFloat(value)
 		case "first packet time":
@@ -53,6 +51,15 @@ func parseCapinfos(raw string) *CaptureSummary {
 			summary.AveragePacketSize = parseLeadingFloat(value)
 		}
 	}
+	return summary
+}
+
+func captureSummaryFromCapinfos(raw string, artifact ArtifactInfo) *CaptureSummary {
+	summary := parseCapinfos(raw)
+	if summary == nil {
+		return nil
+	}
+	summary.FileSizeBytes = artifact.SizeBytes
 	return summary
 }
 
