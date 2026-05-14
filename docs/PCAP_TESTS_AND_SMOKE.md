@@ -48,12 +48,12 @@ Locally, these tests skip when the named binaries are absent.
 | `TestExplainConnectionFiveTupleIntegration` | One-packet HTTP pcap + matching 5-tuple | The connection-scoped analyze pipeline runs, the resolved selector echo carries the constructed `display_filter`, and the `connection_evidence_scoped` finding is present. |
 | `TestExplainConnectionSelectorFailureSetsIsError` | Same pcap + frame_number=999 (absent) | A selector failure surfaces as `IsError=true` on the MCP tool result, no artifacts are persisted, and the response carries a typed error kind. |
 
-### `pcap_diagnose_symptoms`
+### `pcap_detect_symptoms`
 
 | Test | Synthetic input | Proves |
 | --- | --- | --- |
-| `TestRunDiagnosePacketRowsIntegration` | One-packet HTTP pcap from `syntheticHTTPPcap` | The tshark field pass used by `pcap_diagnose_symptoms` extracts only structural packet metadata: tuple, protocol, flags, payload length counters, HTTP presence, timing, and interface tags. |
-| `TestDiagnoseIntegrationDoesNotExposeSyntheticHTTPPayload` | Same pcap with secret-looking URI text | The MCP response does not expose raw HTTP payload fragments while still returning a normal diagnose output. |
+| `TestRunDiagnosePacketRowsIntegration` | One-packet HTTP pcap from `syntheticHTTPPcap` | The tshark field pass used by `pcap_detect_symptoms` extracts only structural packet metadata: tuple, protocol, flags, payload length counters, HTTP presence, timing, and interface tags. |
+| `TestDiagnoseIntegrationDoesNotExposeSyntheticHTTPPayload` | Same pcap with secret-looking URI text | The MCP response does not expose raw HTTP payload fragments while still returning a normal symptom-detection output. |
 
 ### Profile + decryption surfaces
 
@@ -94,14 +94,14 @@ helper. The full set lives in `internal/pcap/*_test.go` and
   tool surface.
 - `TestDiagnoseV1SymptomContracts` /
   `TestDiagnoseFixtureRegistryCoversClosedVocabulary` — pin the four
-  v1 closed-vocabulary diagnose symptoms and their positive/negative
+  v1 closed-vocabulary wire symptoms and their positive/negative
   synthetic packet-row fixtures.
 - `TestDiagnoseFailClosedValidationResponses` — pins that malformed
-  diagnose input, path rejection, and artifact mismatch return normal
-  diagnose outputs with empty `symptoms[]` and typed findings.
+  symptom-detection input, path rejection, and artifact mismatch return
+  normal outputs with empty `symptoms[]` and typed findings.
 - `TestDiagnoseNarrativesStayVendorNeutral` /
   `TestDiagnoseOutputDoesNotExposeRawPayloadBytes` — pin the
-  vendor-neutral and no-raw-payload boundaries for the diagnose
+  vendor-neutral and no-raw-payload boundaries for the detection
   surface.
 - `TestF5ProfileWithoutContextRefusesToGuessSides` /
   `TestF5ProfilePortOnlyContextRefusesClientsideClaim` — pin the
@@ -124,7 +124,7 @@ helper. The full set lives in `internal/pcap/*_test.go` and
 `testdata/symptoms/` directory of binary fixture files. Every test
 that needs a pcap synthesizes one in-memory
 via `syntheticHTTPPcap`, `syntheticSecretsPcap`, or
-`libpcapHeaderOnly`; `pcap_diagnose_symptoms` additionally uses
+`libpcapHeaderOnly`; `pcap_detect_symptoms` additionally uses
 closed-vocabulary packet-row fixtures in `diagnoseSyntheticFixtures`.
 This is deliberate:
 
@@ -139,7 +139,7 @@ The synthesis helpers live in `internal/pcap/analyzer_test.go`
 (`syntheticHTTPPcap`, `ipv4Checksum`),
 `internal/pcap/redaction_integration_test.go`
 (`syntheticSecretsPcap`), and `internal/pcap/filter_test.go`
-(`libpcapHeaderOnly`). The diagnose symptom fixtures live in
+(`libpcapHeaderOnly`). The wire-symptom fixtures live in
 `internal/pcap/diagnose_test.go` as structural packet rows so the
 ratchet can cover positive and negative symptoms without checking in
 binary pcaps.

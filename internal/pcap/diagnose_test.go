@@ -233,14 +233,14 @@ func TestDiagnoseFailClosedValidationResponses(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-				Name:      "pcap_diagnose_symptoms",
+				Name:      "pcap_detect_symptoms",
 				Arguments: tc.args,
 			})
 			if err != nil {
 				t.Fatalf("CallTool: %v", err)
 			}
 			if result.IsError {
-				t.Fatalf("pcap_diagnose_symptoms returned MCP error for fail-closed validation: %+v", result)
+				t.Fatalf("pcap_detect_symptoms returned MCP error for fail-closed validation: %+v", result)
 			}
 			var out diagnoseOutput
 			body, _ := json.Marshal(result.StructuredContent)
@@ -277,7 +277,7 @@ func TestDiagnoseIntegrationDoesNotExposeSyntheticHTTPPayload(t *testing.T) {
 	defer cleanup()
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "pcap_diagnose_symptoms",
+		Name: "pcap_detect_symptoms",
 		Arguments: map[string]any{
 			"path": pcapPath,
 		},

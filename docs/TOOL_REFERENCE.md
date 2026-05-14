@@ -31,10 +31,10 @@ delivery plan see [`ROADMAP.md`](./ROADMAP.md).
   bounded ASCII extraction, derived summaries, persisted JSON +
   Markdown artifacts, and findings. (Stable name; `analyze_pcap` is a
   one-release alias.)
-- `pcap_diagnose_symptoms` — closed-vocabulary, vendor-neutral
-  wire-level symptoms for downstream root-cause skills. Returns
+- `pcap_detect_symptoms` — closed-vocabulary, vendor-neutral
+  wire-level symptom detection for downstream skills. Returns
   structural counters and parser findings only; no raw payload bytes
-  or vendor interpretation.
+  or vendor interpretation, root-cause conclusions, or remediation.
 - `pcap_filter` — write a filtered pcap under `workspace.output_dir`
   from a tshark display filter; returns an `OutputArtifact` reference
   with kind `filtered_pcap`.
@@ -265,15 +265,14 @@ Profile findings (added to the top-level `findings[]`):
 - `f5_profile_http_observed` — info, summarizes HTTP request counts
   bucketed by status class.
 
-### `pcap_diagnose_symptoms`
+### `pcap_detect_symptoms`
 
-Diagnose an allowlisted pcap/pcapng into a closed vocabulary of
-vendor-neutral wire symptoms. This tool describes only what was
-observable on the wire. It does not name BIG-IP, firewall, proxy,
-cloud load balancer, or other vendor concepts, and it does not
-recommend configuration changes. Per-vendor catalogs and
-cross-domain skills consume these tokens and add interpretation in
-their own layer.
+Detect closed-vocabulary, vendor-neutral wire symptoms in an
+allowlisted pcap/pcapng. This tool describes only what was observable
+on the wire. It does not infer root cause, name BIG-IP, firewall,
+proxy, cloud load balancer, or other vendor concepts, and it does not
+recommend configuration changes. Per-vendor catalogs and cross-domain
+skills consume these tokens and add interpretation in their own layer.
 
 Output carries `schema_version: "1.0.0"` and uses this top-level
 shape: `path`, `size_bytes`, `sha256`, `symptoms[]`, `findings[]`.
@@ -299,7 +298,7 @@ Input:
 
 Success output:
 
-- `schema_version`: diagnose contract version (`1.0.0`).
+- `schema_version`: wire-symptom detection contract version (`1.0.0`).
 - `path`, `size_bytes`, `sha256`: validated input artifact identity.
 - `symptoms[]`: closed-vocabulary symptoms. v1 codes are
   `tls_handshake_attempted_on_plain_port`,
@@ -332,41 +331,41 @@ v1 symptom contracts:
 
 Findings vocabulary:
 
-- `pcap_diagnose_flow_unparseable` — warning, parser could not
+- `pcap_detect_flow_unparseable` — warning, parser could not
   classify flow evidence for v1 extractors.
-- `pcap_diagnose_capture_truncated` — info, capture truncation was
+- `pcap_detect_capture_truncated` — info, capture truncation was
   observed by packet metadata or analyzer diagnostics.
-- `pcap_diagnose_window_too_short` — info, capture duration is below
+- `pcap_detect_window_too_short` — info, capture duration is below
   the cadence window for monitor-probe symptoms; cadence symptoms are
   skipped rather than fabricated.
-- `pcap_diagnose_parse_timeout` — warning, diagnose parsing exceeded
+- `pcap_detect_parse_timeout` — warning, symptom detection parsing exceeded
   the server-side parse-time bound.
-- `pcap_diagnose_capture_lacks_interface_metadata` — info, asymmetric
+- `pcap_detect_capture_lacks_interface_metadata` — info, asymmetric
   return-path extraction is suppressed because interface metadata is
   absent or only a single unnamed interface is visible.
-- `pcap_diagnose_unrecognized_pattern_observed` — info, reserved for
+- `pcap_detect_unrecognized_pattern_observed` — info, reserved for
   internal extractor matches that are not promoted to symptom tokens.
   This is deliberately a finding, not a symptom, so hosts can keep the
   symptom vocabulary closed.
-- `pcap_diagnose_input_invalid` — error, malformed input such as
+- `pcap_detect_input_invalid` — error, malformed input such as
   missing `path`, malformed `expected_sha256`, negative
   `expected_size_bytes`, invalid `scope`, or unknown
   `symptom_filter`.
-- `pcap_diagnose_path_invalid` — error, path-safety or artifact-file
+- `pcap_detect_path_invalid` — error, path-safety or artifact-file
   checks rejected `path` before parse work.
-- `pcap_diagnose_artifact_mismatch` — error,
+- `pcap_detect_artifact_mismatch` — error,
   `expected_sha256` / `expected_size_bytes` disagreed with the file on
   disk, so parsing was refused.
 
 MCP result semantics differ intentionally from sibling tools:
 `pcap_validate`, `pcap_analyze`, `pcap_filter`, and
 `pcap_explain_connection` use `IsError=true` for their hard
-validation failures. `pcap_diagnose_symptoms` instead fails closed as
+validation failures. `pcap_detect_symptoms` instead fails closed as
 a normal MCP result (`IsError=false`) for malformed input, unsafe
 paths, and artifact hash/size mismatches. In those responses,
 `schema_version` is populated, `symptoms` is empty, and `findings[]`
 names the typed reason. Hosts should branch on
-`findings[].code`/`severity` for diagnose failure states instead of
+`findings[].code`/`severity` for symptom-detection failure states instead of
 expecting MCP-level errors.
 
 ### `pcap_filter`

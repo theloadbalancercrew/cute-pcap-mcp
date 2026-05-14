@@ -19,13 +19,19 @@ For nuanced conclusion language or conflicting evidence, read
    endpoints, ports, timestamps, VIP/pool/member details, keylog path.
 2. Run `pcap_analyzer_status` if tool availability is unknown.
 3. Run `pcap_validate` before analysis.
-4. Run `pcap_analyze` with bounded rows. Start with:
+4. For packet-shape questions, run `pcap_detect_symptoms` to collect
+   vendor-neutral wire symptoms. Treat tokens such as
+   `monitor_probe_returns_rst`, `tcp_rst_after_synack_no_app_data`, or
+   missing return traffic as observations at the capture point, not as
+   proof that a server is down, a port is closed, or a device is
+   misconfigured.
+5. Run `pcap_analyze` with bounded rows. Start with:
    - `max_packet_rows: 50`
    - `max_zeek_records_per_log: 100`
    - `write_artifacts: true`
-5. If the question is about one flow, use `pcap_explain_connection`
+6. If the question is about one flow, use `pcap_explain_connection`
    after identifying a `frame_number`, `zeek_uid`, or five-tuple.
-6. If the capture is large or noisy, use `pcap_filter` to create a
+7. If the capture is large or noisy, use `pcap_filter` to create a
    smaller derived pcap before deeper analysis.
 
 ## Evidence Rules
@@ -36,6 +42,10 @@ For nuanced conclusion language or conflicting evidence, read
   timestamps, status codes, reset direction, SNI, DNS names.
 - Do not call something "the cause" unless the capture proves causality.
   Use "consistent with" for weaker claims.
+- Use PCAP symptom tokens as packet evidence only. A repeated probe
+  ending in RST or no response is the end of the observed TCP
+  conversation, not by itself a conclusion about endpoint health or
+  configuration.
 - If a section is missing, say whether that is due to analyzer
   availability, capture contents, filters, or output limits when known.
 - Treat `errors[]`, truncation findings, and `output_limit_reached` as
