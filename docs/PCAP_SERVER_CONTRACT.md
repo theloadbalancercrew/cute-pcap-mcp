@@ -198,9 +198,13 @@ arbitrary host filesystem listings.
 The tool is bounded independently of response size:
 
 - `limit` defaults to `10` and has a hard maximum of `10`.
-- each call has a hard scan-entry budget; if the budget is reached,
+- each call has a visited-entry scan budget; if the budget is reached,
   the response sets `truncated: true`, `scan_status:
-  scan_budget_reached`, and includes `next_cursor`.
+  scan_budget_reached`, and includes `next_cursor`. The implementation
+  preserves deterministic lexical ordering for cursor pagination, so
+  the runtime may enumerate directory names before the callback-level
+  budget can fire; operators should keep allowlisted roots scoped to
+  PCAP work directories.
 - each call has a cumulative hash byte budget. Entries whose SHA-256
   cannot be computed within that budget still return file metadata
   with `hash_status: omitted` and an `omitted_reasons` token such as
@@ -213,11 +217,11 @@ The tool is bounded independently of response size:
   bad entries are not repeated after a scan-budget page.
 
 Per-artifact filesystem problems are fail-soft. A symlink escape,
-unreadable file, too-large pcap, vanished file, or non-regular
-`.pcap` path increments a grouped `skips[]` reason/count and does not
-fail the whole inventory call. Whole-tool errors are reserved for
-caller input problems such as an out-of-range `limit` or malformed
-`cursor`.
+unreadable file, too-large pcap, vanished file, non-regular `.pcap`
+path, or `.pcap` symlink whose resolved target is not a pcap/pcapng
+extension increments a grouped `skips[]` reason/count and does not fail
+the whole inventory call. Whole-tool errors are reserved for caller
+input problems such as an out-of-range `limit` or malformed `cursor`.
 
 ### What this server explicitly does NOT do
 

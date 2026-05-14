@@ -150,20 +150,23 @@ Success output:
 - `count`: number of artifact entries returned.
 - `limit`: effective limit used for this call.
 - `truncated`: `true` when the server stopped before an exhaustive
-  scan, either because `limit` was reached or because the scan budget
-  was reached.
+  scan, either because `limit` was reached or because the visited-entry
+  scan budget was reached.
 - `next_cursor`: present only when `truncated` is `true`. The cursor
   records the last scanned key, not merely the last returned artifact,
   so skipped/bad entries are not repeated on the next page.
 - `scan_status`: `complete`, `page_limit_reached`, or
   `scan_budget_reached`.
 - `scan_budget_entries`, `hash_budget_bytes`, `hash_bytes_used`:
-  inventory-level resource budget metadata.
+  inventory-level resource budget metadata. The scan budget bounds
+  entries visited by the inventory callback; deterministic lexical
+  ordering may require the runtime to enumerate directory names before
+  the callback budget can fire.
 - `skips`: bounded grouped counts for fail-soft per-entry skips. Skip
   reasons may include `path_outside_allowlist`,
   `artifact_not_regular_file`, `artifact_not_found`, `pcap_too_large`,
-  and `artifact_inaccessible`. Skip records do not include the skipped
-  path.
+  `unsupported_artifact_extension`, and `artifact_inaccessible`. Skip
+  records do not include the skipped path.
 
 Tool errors:
 

@@ -41,15 +41,17 @@ const (
 	artifactInventoryOmitHashUnavailable   = "hash_unavailable"
 
 	artifactInventorySkipInaccessible = "artifact_inaccessible"
+	artifactInventorySkipUnsupported  = "unsupported_artifact_extension"
 )
 
 var (
 	errArtifactInventoryStop              = errors.New("artifact inventory stopped")
 	errArtifactInventoryHashBudgetReached = errors.New(artifactInventoryOmitHashBudgetReached)
+	errArtifactInventoryUnsupported       = errors.New(artifactInventorySkipUnsupported)
 )
 
 type listArtifactsInput struct {
-	Limit  int    `json:"limit,omitempty" jsonschema:"maximum artifacts to return; default 10, hard maximum 10"`
+	Limit  *int   `json:"limit,omitempty" jsonschema:"maximum artifacts to return; default 10, hard maximum 10"`
 	Cursor string `json:"cursor,omitempty" jsonschema:"opaque cursor from a prior truncated list_pcap_artifacts response; cursors are versioned and not secret"`
 }
 
@@ -163,6 +165,11 @@ func listPCAPArtifactsWithOptions(ctx context.Context, cfg config.Config, input 
 		if cursor != nil && rootIndex < cursor.RootIndex {
 			continue
 		}
+		// filepath.WalkDir gives us deterministic lexical order for
+		// cursor pagination. Its per-directory read/sort happens before
+		// this callback receives children, so MaxScanEntries bounds the
+		// inventory entries this tool processes, not every lower-level
+		// directory-enumeration operation the runtime performs.
 		walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, entryErr error) error {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -213,8 +220,7 @@ func listPCAPArtifactsWithOptions(ctx context.Context, cfg config.Config, input 
 				return stopArtifactInventoryIfNeeded(&out, scanned, opts.MaxScanEntries, lastScanned)
 			}
 
-			contentType := artifactInventoryContentType(relSlash)
-			entry, err := artifactInventoryEntryForPath(ctx, path, cfg, contentType, &remainingHashBudget)
+			entry, err := artifactInventoryEntryForPath(ctx, path, cfg, &remainingHashBudget)
 			if err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return err
@@ -261,15 +267,15 @@ func listPCAPArtifactsWithOptions(ctx context.Context, cfg config.Config, input 
 	return out, nil
 }
 
-func normalizeArtifactInventoryLimit(limit int) (int, error) {
-	if limit == 0 {
+func normalizeArtifactInventoryLimit(limit *int) (int, error) {
+	if limit == nil {
 		return defaultArtifactInventoryLimit, nil
 	}
-	if limit < 0 || limit > maxArtifactInventoryLimit {
+	if *limit < 1 || *limit > maxArtifactInventoryLimit {
 		return 0, validationError("limit", ValidationReasonOutOfRange,
 			fmt.Sprintf("limit must be between 1 and %d", maxArtifactInventoryLimit))
 	}
-	return limit, nil
+	return *limit, nil
 }
 
 func skipArtifactInventoryCursorEntry(rootIndex int, relSlash string, isDir bool, cursor *artifactInventoryCursor) (bool, bool) {
@@ -298,10 +304,13 @@ func stopArtifactInventoryIfNeeded(out *listArtifactsOutput, scanned, maxScanEnt
 	return nil
 }
 
-func artifactInventoryEntryForPath(ctx context.Context, path string, cfg config.Config, contentType string, remainingHashBudget *int64) (artifactInventoryEntry, error) {
+func artifactInventoryEntryForPath(ctx context.Context, path string, cfg config.Config, remainingHashBudget *int64) (artifactInventoryEntry, error) {
 	resolved, info, err := resolveArtifactFile(path, cfg)
 	if err != nil {
 		return artifactInventoryEntry{}, err
+	}
+	if !isPCAPArtifactName(resolved) {
+		return artifactInventoryEntry{}, errArtifactInventoryUnsupported
 	}
 
 	entry := artifactInventoryEntry{
@@ -310,7 +319,7 @@ func artifactInventoryEntryForPath(ctx context.Context, path string, cfg config.
 		SizeBytes:   info.Size(),
 		HashStatus:  artifactInventoryHashComputed,
 		ModifiedAt:  info.ModTime().UTC().Format(time.RFC3339),
-		ContentType: contentType,
+		ContentType: artifactInventoryContentType(resolved),
 	}
 
 	if info.Size() > *remainingHashBudget {
@@ -421,6 +430,8 @@ func artifactInventorySkipReason(err error) string {
 		return ErrorKindArtifactNotFound
 	case errors.Is(err, errPCAPTooLarge):
 		return ErrorKindPCAPTooLarge
+	case errors.Is(err, errArtifactInventoryUnsupported):
+		return artifactInventorySkipUnsupported
 	default:
 		return artifactInventorySkipInaccessible
 	}

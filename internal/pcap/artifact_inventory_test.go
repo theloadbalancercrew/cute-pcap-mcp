@@ -88,7 +88,7 @@ func TestListPCAPArtifactsPaginatesWithLastScannedCursor(t *testing.T) {
 	}
 	cfg := normalizedInventoryConfig(t, root)
 
-	first, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{Limit: 2}, artifactInventoryOptions{
+	first, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{Limit: inventoryLimit(2)}, artifactInventoryOptions{
 		MaxScanEntries:  10,
 		HashBudgetBytes: 1024,
 	})
@@ -106,7 +106,7 @@ func TestListPCAPArtifactsPaginatesWithLastScannedCursor(t *testing.T) {
 	}
 
 	second, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{
-		Limit:  2,
+		Limit:  inventoryLimit(2),
 		Cursor: first.NextCursor,
 	}, artifactInventoryOptions{
 		MaxScanEntries:  10,
@@ -131,7 +131,7 @@ func TestListPCAPArtifactsScanBudgetCursorUsesLastScannedKey(t *testing.T) {
 	writeInventoryFile(t, filepath.Join(root, "d.pcap"), []byte("pcap two"))
 	cfg := normalizedInventoryConfig(t, root)
 
-	first, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{Limit: 10}, artifactInventoryOptions{
+	first, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{Limit: inventoryLimit(10)}, artifactInventoryOptions{
 		MaxScanEntries:  2,
 		HashBudgetBytes: 1024,
 	})
@@ -149,7 +149,7 @@ func TestListPCAPArtifactsScanBudgetCursorUsesLastScannedKey(t *testing.T) {
 	}
 
 	second, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{
-		Limit:  10,
+		Limit:  inventoryLimit(10),
 		Cursor: first.NextCursor,
 	}, artifactInventoryOptions{
 		MaxScanEntries:  10,
@@ -169,7 +169,7 @@ func TestListPCAPArtifactsHashBudgetOmissionsArePerEntry(t *testing.T) {
 	writeInventoryFile(t, filepath.Join(root, "b.pcap"), []byte("abcdefgh"))
 	cfg := normalizedInventoryConfig(t, root)
 
-	out, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{Limit: 10}, artifactInventoryOptions{
+	out, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{Limit: inventoryLimit(10)}, artifactInventoryOptions{
 		MaxScanEntries:  10,
 		HashBudgetBytes: 8,
 	})
@@ -208,7 +208,7 @@ func TestListPCAPArtifactsFailSoftSkipsSymlinkEscapeBesideGoodFile(t *testing.T)
 	writeInventoryFile(t, filepath.Join(allowed, "good.pcap"), []byte("good"))
 	cfg := normalizedInventoryConfig(t, allowed)
 
-	out, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{Limit: 10}, artifactInventoryOptions{
+	out, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{Limit: inventoryLimit(10)}, artifactInventoryOptions{
 		MaxScanEntries:  10,
 		HashBudgetBytes: 1024,
 	})
@@ -223,14 +223,46 @@ func TestListPCAPArtifactsFailSoftSkipsSymlinkEscapeBesideGoodFile(t *testing.T)
 	}
 }
 
+func TestListPCAPArtifactsSkipsSymlinkWhoseResolvedPathIsNotPCAP(t *testing.T) {
+	allowed := t.TempDir()
+	target := filepath.Join(allowed, "notes.txt")
+	writeInventoryFile(t, target, []byte("not a pcap"))
+	if err := os.Symlink(target, filepath.Join(allowed, "link.pcap")); err != nil {
+		t.Skipf("os.Symlink unavailable: %v", err)
+	}
+	writeInventoryFile(t, filepath.Join(allowed, "good.pcap"), []byte("good"))
+	cfg := normalizedInventoryConfig(t, allowed)
+
+	out, err := listPCAPArtifactsWithOptions(context.Background(), cfg, listArtifactsInput{Limit: inventoryLimit(10)}, artifactInventoryOptions{
+		MaxScanEntries:  10,
+		HashBudgetBytes: 1024,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := inventoryBasenames(out), []string{"good.pcap"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("basenames = %v, want %v", got, want)
+	}
+	if got := inventorySkipCount(out, artifactInventorySkipUnsupported); got != 1 {
+		t.Fatalf("unsupported extension skip count = %d, want 1 (skips=%v)", got, out.Skips)
+	}
+}
+
 func TestListPCAPArtifactsRejectsBadCallerInput(t *testing.T) {
 	cfg := normalizedInventoryConfig(t, t.TempDir())
 
-	_, err := listPCAPArtifacts(context.Background(), cfg, listArtifactsInput{Limit: maxArtifactInventoryLimit + 1})
+	_, err := listPCAPArtifacts(context.Background(), cfg, listArtifactsInput{Limit: inventoryLimit(maxArtifactInventoryLimit + 1)})
+	assertInventoryValidationError(t, err, "limit", ValidationReasonOutOfRange)
+
+	_, err = listPCAPArtifacts(context.Background(), cfg, listArtifactsInput{Limit: inventoryLimit(0)})
 	assertInventoryValidationError(t, err, "limit", ValidationReasonOutOfRange)
 
 	_, err = listPCAPArtifacts(context.Background(), cfg, listArtifactsInput{Cursor: "not-a-valid-cursor"})
 	assertInventoryValidationError(t, err, "cursor", ValidationReasonInvalidFormat)
+}
+
+func inventoryLimit(limit int) *int {
+	return &limit
 }
 
 func normalizedInventoryConfig(t *testing.T, root string) config.Config {
