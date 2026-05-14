@@ -233,6 +233,11 @@ func registerTools(server *mcp.Server, state *serverState) {
 	}
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_pcap_artifacts",
+		Description: "List a bounded metadata-only inventory of pcap/pcapng artifacts under configured allowlisted roots. Returns paths, size, optional sha256, modified time, content type, pagination, and skip metadata; never packet bytes or analyzer output.",
+	}, state.listArtifactsHandler("list_pcap_artifacts"))
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "pcap_analyzer_status",
 		Description: "Report local availability and versions for capinfos, tshark, and Zeek.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ analyzerStatusInput) (*mcp.CallToolResult, analyzerStatusOutput, error) {
@@ -514,38 +519,9 @@ func validateArtifactExpectations(sha256 string, sizeBytes *int64) error {
 }
 
 func inspectArtifact(path string, cfg config.Config, expected artifactExpectations) (ArtifactInfo, error) {
-	if path == "" {
-		return ArtifactInfo{}, missingFieldError("path")
-	}
-	abs, err := filepath.Abs(path)
+	abs, info, err := resolveArtifactFile(path, cfg)
 	if err != nil {
 		return ArtifactInfo{}, err
-	}
-	abs = filepath.Clean(abs)
-	resolved, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return ArtifactInfo{}, fmt.Errorf("%w: %s", errArtifactNotFound, abs)
-		}
-		return ArtifactInfo{}, err
-	}
-	abs = filepath.Clean(resolved)
-	if !underAny(abs, cfg.AllowedArtifactDirs) {
-		return ArtifactInfo{}, errPathOutsideAllowlist
-	}
-	info, err := os.Stat(abs)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return ArtifactInfo{}, fmt.Errorf("%w: %s", errArtifactNotFound, abs)
-		}
-		return ArtifactInfo{}, err
-	}
-	if !info.Mode().IsRegular() {
-		return ArtifactInfo{}, errArtifactNotRegular
-	}
-	if cfg.Analysis.MaxPCAPBytes > 0 && info.Size() > cfg.Analysis.MaxPCAPBytes {
-		return ArtifactInfo{}, fmt.Errorf("%w: %d bytes exceeds analysis.max_pcap_bytes (%d)",
-			errPCAPTooLarge, info.Size(), cfg.Analysis.MaxPCAPBytes)
 	}
 	// Cheap size pre-check before reading bytes for the hash. A
 	// producer that supplied size_bytes but not sha256 still gets a
@@ -580,6 +556,43 @@ func inspectArtifact(path string, cfg config.Config, expected artifactExpectatio
 		SizeBytes: info.Size(),
 		SHA256:    actualSHA256,
 	}, nil
+}
+
+func resolveArtifactFile(path string, cfg config.Config) (string, os.FileInfo, error) {
+	if path == "" {
+		return "", nil, missingFieldError("path")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", nil, err
+	}
+	abs = filepath.Clean(abs)
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil, fmt.Errorf("%w: %s", errArtifactNotFound, abs)
+		}
+		return "", nil, err
+	}
+	abs = filepath.Clean(resolved)
+	if !underAny(abs, cfg.AllowedArtifactDirs) {
+		return "", nil, errPathOutsideAllowlist
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil, fmt.Errorf("%w: %s", errArtifactNotFound, abs)
+		}
+		return "", nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return "", nil, errArtifactNotRegular
+	}
+	if cfg.Analysis.MaxPCAPBytes > 0 && info.Size() > cfg.Analysis.MaxPCAPBytes {
+		return "", nil, fmt.Errorf("%w: %d bytes exceeds analysis.max_pcap_bytes (%d)",
+			errPCAPTooLarge, info.Size(), cfg.Analysis.MaxPCAPBytes)
+	}
+	return abs, info, nil
 }
 
 func underAny(path string, allowedDirs []string) bool {

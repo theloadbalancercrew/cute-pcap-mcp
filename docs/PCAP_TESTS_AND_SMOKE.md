@@ -88,6 +88,11 @@ helper. The full set lives in `internal/pcap/*_test.go` and
 - `TestServerRegistersStableAndLegacyToolNames` — pins the full
   set of registered tool names; new tool registrations must
   update this test.
+- `TestListPCAPArtifacts*` — pins the bounded allowlisted inventory
+  surface: empty/populated roots, deterministic pagination, scan-budget
+  truncation with last-scanned cursors, hash-budget omissions,
+  fail-soft symlink skips, resolved-extension checks, and typed
+  caller-input validation.
 - `TestToolReferenceCoversEveryRegisteredTool` /
   `TestToolReferenceRoadmapOmitsRegisteredTools` — drift ratchets
   keeping `docs/TOOL_REFERENCE.md` aligned with the registered

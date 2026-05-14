@@ -365,15 +365,12 @@ Restart Codex after installing or updating skills.
 ### 6. First Test Prompt
 
 Copy a small `.pcap` or `.pcapng` file into `~/mcp-work/pcaps`, then ask
-Claude or Codex. Use the real path for your OS:
+Claude or Codex:
 
 ```text
 Use cute-pcap-mcp to run pcap_analyzer_status.
-Then validate this capture:
-- macOS: /Users/you/mcp-work/pcaps/sample.pcap
-- Linux: /home/you/mcp-work/pcaps/sample.pcap
-- Windows: C:\Users\you\mcp-work\pcaps\sample.pcap
-Then analyze it with max_packet_rows=50 and write_artifacts=true.
+Then run list_pcap_artifacts.
+Validate the returned sample capture path, then analyze it with max_packet_rows=50 and write_artifacts=true.
 Summarize only packet evidence returned by the tool; do not guess.
 ```
 
@@ -426,6 +423,10 @@ Stable names (use these in new orchestration):
 
 - `pcap_validate`: validate an allowlisted pcap/pcapng and return
   artifact metadata.
+- `list_pcap_artifacts`: list a bounded metadata-only inventory of
+  pcap/pcapng artifacts under configured allowlisted roots, with
+  pagination, skip counts, and optional SHA-256 when the inventory
+  hash budget allows it.
 - `pcap_analyze`: full analysis pipeline with capinfos, tshark, Zeek,
   bounded ASCII extraction, derived summaries, and persisted JSON +
   Markdown artifacts.
