@@ -93,7 +93,7 @@ tool's job; it remains the authoritative analyzer-version answer.
 ## Schema versioning
 
 `pcap_analyze` (and its `analyze_pcap` alias) stamp the response with
-a `schema_version` field. The current value is **`1.1.0`**, defined
+a `schema_version` field. The current value is **`1.2.0`**, defined
 as `SchemaVersion` in [`output.go`](../internal/pcap/output.go).
 
 - **Patch** bumps (`x.y.z`) are bug fixes that do not change the wire
@@ -137,10 +137,76 @@ evidence.
 | `ascii` | object | Bounded printable-ASCII extraction. |
 | `tls_decryption` | object | Always-present typed status for SSLKEYLOGFILE handling. |
 | `profile` | object | Optional `analysis_profile` result (today: `f5_ltm_tls_debug`). |
+| `report_charts` | object | Chart-ready packet timing, protocol, signal, and connection-duration summaries derived from bounded evidence. |
 | `findings` | array | Stable finding codes (analysis itself, not packet content). |
 | `artifacts` | array | `OutputArtifact` references for written JSON/Markdown. |
 | `errors` | array | Per-section partial-failure errors. |
 | `metadata` | map | Privacy and bounding notes. |
+
+### Reporting charts
+
+`report_charts` is an optional additive section intended for report UIs
+and the generated `summary.md`. It never runs a separate analyzer and
+does not expose packet payload bytes. The section is derived from:
+
+- capinfos timing metadata already present in `capture_summary`;
+- bounded tshark packet rows already present in `packets`;
+- bounded Zeek-derived connection and signal summaries already present
+  elsewhere in the response.
+
+Shape:
+
+```json
+{
+  "report_charts": {
+    "packet_timing": {
+      "packet_rows_returned": 20,
+      "packet_rows_plotted": 20,
+      "capture_duration_seconds": 1.234567,
+      "bucket_width_seconds": 0.123456,
+      "buckets": [
+        {
+          "start_offset_seconds": 0,
+          "end_offset_seconds": 0.123456,
+          "packet_count": 3,
+          "protocol_counts": {"TCP": 2, "HTTP": 1}
+        }
+      ]
+    },
+    "protocol_distribution": [{"label": "TCP", "count": 12}],
+    "signal_counts": [{"label": "http_requests", "count": 4}],
+    "connection_durations": [
+      {
+        "label": "192.0.2.10:49152 -> 198.51.100.20:443",
+        "uid": "Cabc123",
+        "protocol": "tcp",
+        "service": "ssl",
+        "source": "192.0.2.10",
+        "source_port": "49152",
+        "destination": "198.51.100.20",
+        "dest_port": "443",
+        "duration_seconds": 1.25
+      }
+    ],
+    "metadata": {
+      "scope": "Charts are derived from bounded analyzer evidence returned by this tool call; packet timing may be capped or display-filtered."
+    }
+  }
+}
+```
+
+Important scope notes:
+
+- `packet_timing` is bucketed from returned tshark packet rows. If
+  `display_filter` or `max_packet_rows` limits those rows, the chart is
+  a bounded view of those rows, not a full-capture packet-rate claim.
+- `protocol_distribution` is counted from the same returned packet
+  rows.
+- `connection_durations` is capped to the longest ten parsed Zeek
+  connection durations from the bounded connection summary.
+- The generated Markdown summary renders these structures as compact
+  tables with text bars so reports remain readable without external
+  JavaScript or image generation.
 
 ## External artifact references
 
@@ -413,7 +479,7 @@ or more `OutputArtifact` entries:
   "size_bytes": 12345,
   "sha256": "<hex-of-file-bytes>",
   "content_type": "application/json",
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "generated_at": "2026-04-29T15:43:01Z",
   "kind": "analysis_json"
 }
@@ -636,7 +702,7 @@ implementation choices and asserted by tests.
   and requires a roadmap entry.
 - `schema_version` is stamped on every `pcap_analyze` /
   `pcap_explain_connection` response and on every persisted
-  `OutputArtifact`. Current value is **`1.1.0`**, defined as
+  `OutputArtifact`. Current value is **`1.2.0`**, defined as
   `SchemaVersion` in
   [`output.go`](../internal/pcap/output.go). Bump rules: patch =
   fixes, minor = additive (new optional fields, new finding codes,

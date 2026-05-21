@@ -396,6 +396,7 @@ func analyzeArtifact(ctx context.Context, artifact ArtifactInfo, cfg config.Conf
 	// request decryption, the response carries the typed status
 	// (`not_requested`) so hosts can switch on it without ambiguity.
 	out.TLSDecryption = finalizeTLSDecryptionStatus(keylogStatus, keylogDetail, keylogAnalyzerFailed, keylogPathOrEmpty(keylogStatus, keylogResolved))
+	out.ReportCharts = buildReportCharts(out, zeekSummary)
 	return out
 }
 

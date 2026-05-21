@@ -27,6 +27,7 @@ metadata and bounded summaries:
 
 - packet counts
 - durations
+- chart-ready timing/count summaries derived from bounded evidence
 - protocol hierarchy
 - conversation summaries
 - derived Zeek summaries for connection, DNS, HTTP, TLS, notice, and
