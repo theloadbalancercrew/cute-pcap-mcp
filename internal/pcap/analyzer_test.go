@@ -390,6 +390,9 @@ func TestAnalyzeArtifactIntegrationWithPacketTools(t *testing.T) {
 	if out.ASCII == nil || !asciiContains(out.ASCII, "GET /hello?token=[REDACTED]") {
 		t.Fatalf("missing redacted ASCII HTTP request: %#v", out.ASCII)
 	}
+	if out.ReportCharts == nil || out.ReportCharts.PacketTiming == nil || len(out.ReportCharts.ProtocolDistribution) == 0 {
+		t.Fatalf("missing report_charts: %#v", out.ReportCharts)
+	}
 }
 
 func requireCommand(t *testing.T, name string) {

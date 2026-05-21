@@ -196,8 +196,18 @@ analyses of the same pcap fire in the same UTC second.
 Output shape (top level): `schema_version`, `artifact`,
 `capture_summary`, `protocols`, `conversations`, `packets`, `dns`,
 `http`, `tls`, `tcp_health`, `notices`, `weird_events`, `zeek_logs`,
-`ascii`, `tls_decryption`, `profile`, `findings`, `artifacts`,
-`errors`, `metadata`.
+`ascii`, `tls_decryption`, `profile`, `report_charts`, `findings`,
+`artifacts`, `errors`, `metadata`.
+
+`report_charts` is an optional chart-ready reporting section derived
+from evidence already returned by the call: capinfos timing, bounded
+tshark packet rows, and bounded Zeek summaries. It includes packet
+timing buckets, protocol counts from returned packet rows, Zeek signal
+counts, and the longest parsed connection durations. The generated
+`summary.md` renders the same data as compact Markdown tables with text
+bars. Packet timing and protocol charts are scoped to returned packet
+rows, so they may be capped by `max_packet_rows` or narrowed by
+`display_filter`.
 
 Input:
 

@@ -5,7 +5,7 @@ package pcap
 // breaking changes (removed fields, renamed fields, retyped values →
 // major). Hosts may switch on this value but should not break on
 // minor bumps.
-const SchemaVersion = "1.1.0"
+const SchemaVersion = "1.2.0"
 
 // analyzeOutput is the model-facing shape returned by both
 // pcap_analyze (the new stable name) and analyze_pcap (its
@@ -24,22 +24,23 @@ type analyzeOutput struct {
 	Artifact ArtifactInfo `json:"artifact"`
 
 	// Top-level sections in the order documented by the contract.
-	CaptureSummary *CaptureSummary       `json:"capture_summary,omitempty"`
-	Protocols      *ProtocolsSection     `json:"protocols,omitempty"`
-	Conversations  map[string]string     `json:"conversations,omitempty"`
-	Packets        []TSharkPacketSummary `json:"packets,omitempty"`
-	DNS            []DNSQuerySummary     `json:"dns,omitempty"`
-	HTTP           []HTTPRequestSummary  `json:"http,omitempty"`
-	TLS            []TLSHandshakeSummary `json:"tls,omitempty"`
-	TCPHealth      *TCPHealthSection     `json:"tcp_health,omitempty"`
-	Notices        []ZeekEventSummary    `json:"notices,omitempty"`
-	WeirdEvents    []ZeekEventSummary    `json:"weird_events,omitempty"`
-	ZeekLogs       []ZeekLog             `json:"zeek_logs,omitempty"`
-	ASCII          *ASCIIReport          `json:"ascii,omitempty"`
-	TLSDecryption  *TLSDecryptionStatus  `json:"tls_decryption,omitempty"`
+	CaptureSummary *CaptureSummary        `json:"capture_summary,omitempty"`
+	Protocols      *ProtocolsSection      `json:"protocols,omitempty"`
+	Conversations  map[string]string      `json:"conversations,omitempty"`
+	Packets        []TSharkPacketSummary  `json:"packets,omitempty"`
+	DNS            []DNSQuerySummary      `json:"dns,omitempty"`
+	HTTP           []HTTPRequestSummary   `json:"http,omitempty"`
+	TLS            []TLSHandshakeSummary  `json:"tls,omitempty"`
+	TCPHealth      *TCPHealthSection      `json:"tcp_health,omitempty"`
+	Notices        []ZeekEventSummary     `json:"notices,omitempty"`
+	WeirdEvents    []ZeekEventSummary     `json:"weird_events,omitempty"`
+	ZeekLogs       []ZeekLog              `json:"zeek_logs,omitempty"`
+	ASCII          *ASCIIReport           `json:"ascii,omitempty"`
+	TLSDecryption  *TLSDecryptionStatus   `json:"tls_decryption,omitempty"`
 	Profile        *AnalysisProfileResult `json:"profile,omitempty"`
-	Findings       []PacketFinding       `json:"findings"`
-	Artifacts      []OutputArtifact      `json:"artifacts,omitempty"`
+	ReportCharts   *ReportChartsSection   `json:"report_charts,omitempty"`
+	Findings       []PacketFinding        `json:"findings"`
+	Artifacts      []OutputArtifact       `json:"artifacts,omitempty"`
 
 	// Errors collects per-section partial failures. Errors and Error
 	// are mutually exclusive: a non-nil Error means the whole call
@@ -91,6 +92,53 @@ type TCPHealthSection struct {
 	ResetConnections   []ConnectionSummary `json:"reset_connections,omitempty"`
 }
 
+// ReportChartsSection exposes chart-ready, bounded summary data for
+// report UIs and Markdown artifacts. It is derived only from evidence
+// already returned by analyzeOutput: capinfos capture timing, bounded
+// tshark packet rows, and bounded Zeek summaries.
+type ReportChartsSection struct {
+	PacketTiming         *PacketTimingChart           `json:"packet_timing,omitempty"`
+	ProtocolDistribution []ChartCount                 `json:"protocol_distribution,omitempty"`
+	SignalCounts         []ChartCount                 `json:"signal_counts,omitempty"`
+	ConnectionDurations  []ConnectionDurationChartRow `json:"connection_durations,omitempty"`
+	Metadata             map[string]string            `json:"metadata,omitempty"`
+}
+
+// PacketTimingChart buckets returned tshark packet rows by relative
+// time. It is intentionally scoped to the packet rows returned by this
+// call, which may be display-filtered or capped by max_packet_rows.
+type PacketTimingChart struct {
+	PacketRowsReturned     int                  `json:"packet_rows_returned"`
+	PacketRowsPlotted      int                  `json:"packet_rows_plotted"`
+	CaptureDurationSeconds float64              `json:"capture_duration_seconds,omitempty"`
+	BucketWidthSeconds     float64              `json:"bucket_width_seconds,omitempty"`
+	Buckets                []PacketTimingBucket `json:"buckets,omitempty"`
+}
+
+type PacketTimingBucket struct {
+	StartOffsetSeconds float64        `json:"start_offset_seconds"`
+	EndOffsetSeconds   float64        `json:"end_offset_seconds"`
+	PacketCount        int            `json:"packet_count"`
+	ProtocolCounts     map[string]int `json:"protocol_counts,omitempty"`
+}
+
+type ChartCount struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+type ConnectionDurationChartRow struct {
+	Label           string  `json:"label"`
+	UID             string  `json:"uid,omitempty"`
+	Protocol        string  `json:"protocol,omitempty"`
+	Service         string  `json:"service,omitempty"`
+	Source          string  `json:"source,omitempty"`
+	SourcePort      string  `json:"source_port,omitempty"`
+	Destination     string  `json:"destination,omitempty"`
+	DestPort        string  `json:"dest_port,omitempty"`
+	DurationSeconds float64 `json:"duration_seconds"`
+}
+
 // OutputArtifact is the wire shape for a server-written derived
 // artifact (analysis.json, summary.md, or pcap_filter outputs). The
 // path is server-generated under
@@ -109,7 +157,7 @@ type OutputArtifact struct {
 // Output artifact kind tokens. Switch on these, not on file
 // extension. Stable across releases.
 const (
-	OutputArtifactKindAnalysisJSON   = "analysis_json"
+	OutputArtifactKindAnalysisJSON    = "analysis_json"
 	OutputArtifactKindSummaryMarkdown = "summary_markdown"
 	OutputArtifactKindFilteredPCAP    = "filtered_pcap"
 )

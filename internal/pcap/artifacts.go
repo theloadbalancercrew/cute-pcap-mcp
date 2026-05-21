@@ -192,6 +192,8 @@ func renderMarkdownSummary(out analyzeOutput, now time.Time) string {
 		b.WriteString("\n")
 	}
 
+	appendReportChartsMarkdown(&b, out.ReportCharts)
+
 	if out.Protocols != nil && out.Protocols.Hierarchy != "" {
 		b.WriteString("## Protocols\n\n```\n")
 		b.WriteString(out.Protocols.Hierarchy)

@@ -27,7 +27,7 @@ Locally, these tests skip when the named binaries are absent.
 
 | Test | Synthetic input | Proves |
 | --- | --- | --- |
-| `TestAnalyzeArtifactIntegrationWithPacketTools` | One-packet HTTP/TLS pcap from `syntheticHTTPPcap` | `pcap_analyze` populates `capture_summary`, `protocols`, `conversations`, `packets`, `dns`/`http`/`tls` from Zeek logs (when present), `ascii` with redaction. The `schema_version` is stamped. |
+| `TestAnalyzeArtifactIntegrationWithPacketTools` | One-packet HTTP/TLS pcap from `syntheticHTTPPcap` | `pcap_analyze` populates `capture_summary`, `protocols`, `conversations`, `packets`, `dns`/`http`/`tls` from Zeek logs (when present), `ascii` with redaction, and chart-ready reporting data. The `schema_version` is stamped. |
 | `TestAnalyzeArtifactBubblesInvalidFilterToTopLevel` | Same pcap + bogus display filter | Invalid display filters from tshark surface as the typed `invalid_filter` kind in `out.Errors[]` and as a finding. They are not hidden inside the tshark sub-report. |
 | `TestRunZeekReportUsesWorkspaceTmpDir` | Same pcap | Zeek's per-call workdir lands under `cfg.Workspace.TmpDir` rather than `/tmp`, honoring the workspace contract. |
 
